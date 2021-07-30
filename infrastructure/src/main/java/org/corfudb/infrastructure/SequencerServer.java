@@ -3,14 +3,11 @@ package org.corfudb.infrastructure;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableMap;
 import com.google.protobuf.TextFormat;
-import io.micrometer.core.instrument.Meter;
-import io.micrometer.core.instrument.Tags;
 import io.netty.channel.ChannelHandlerContext;
 import lombok.Builder;
 import lombok.Builder.Default;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
-import org.corfudb.common.metrics.micrometer.MeterRegistryProvider;
 import org.corfudb.common.metrics.micrometer.MicroMeterUtils;
 import org.corfudb.infrastructure.SequencerServerCache.ConflictTxStream;
 import org.corfudb.protocols.CorfuProtocolCommon;
@@ -41,6 +38,7 @@ import javax.annotation.Nonnull;
 import java.lang.invoke.MethodHandles;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -296,8 +294,7 @@ public class SequencerServer extends AbstractServer {
             // for each key pair, check for conflict; if not present, check against the wildcard
             for (byte[] conflictParam : conflictParamSet) {
 
-                Long keyAddress = cache.get(new ConflictTxStream(conflictStream.getKey(),
-                        conflictParam, Address.NON_ADDRESS));
+                Long keyAddress = cache.get(new ConflictTxStream(conflictStream.getKey(), conflictParam));
 
                 if (log.isTraceEnabled()){
                     log.trace("Commit-ck[{}] conflict-key[{}](ts={})",
@@ -400,7 +397,7 @@ public class SequencerServer extends AbstractServer {
         if (trimMark < req.getPayload().getSequencerTrimRequest().getTrimMark()) {
             // Advance the trim mark, if the new trim request has a higher trim mark.
             trimMark = req.getPayload().getSequencerTrimRequest().getTrimMark();
-            cache.invalidateUpTo(trimMark);
+            cache.evictUpTo(trimMark);
 
             // Remove trimmed addresses from each address map and set new trim mark
             for (StreamAddressSpace streamAddressSpace : streamsAddressMap.values()) {
@@ -487,7 +484,7 @@ public class SequencerServer extends AbstractServer {
         if (!bootstrapWithoutTailsUpdate) {
             globalLogTail = req.getPayload().getBootstrapSequencerRequest().getGlobalTail();
             cache = sequencerFactoryHelper.getSequencerServerCache(
-                    cache.getCacheSize(),
+                    cache.getCapacity(),
                     globalLogTail - 1
             );
 
@@ -710,15 +707,19 @@ public class SequencerServer extends AbstractServer {
 
         // update the cache of conflict parameters
         if (tokenRequest.hasTxnResolution()) {
-            tokenRequest.getTxnResolution().getWriteConflictParamsSetList()
-                    .forEach((item) -> {
-                        // insert an entry with the new timestamp using the
-                        // hash code based on the param and the stream id.
-                        item.getValueList().forEach(conflictParam ->
-                                cache.put(new ConflictTxStream(getUUID(item.getKey()),
-                                        conflictParam.toByteArray(), newTail - 1)));
-                    });
+            Set<ConflictTxStream> conflictTxStreamList = tokenRequest.getTxnResolution()
+                    .getWriteConflictParamsSetList()
+                    .stream()
+                    .flatMap(item -> {
+                        final UUID streamId = getUUID(item.getKey());
+                        return item.getValueList()
+                                .stream()
+                                .map(conflictParam -> new ConflictTxStream(streamId, conflictParam.toByteArray()));
+                    }).collect(Collectors.toCollection(LinkedHashSet::new));
+
+           cache.put(conflictTxStreamList, newTail - 1);
         }
+
         if (log.isTraceEnabled()) {
             log.trace("handleAllocation: token={} backpointers={}",
                     globalLogTail, backPointerMap.build());
@@ -744,7 +745,7 @@ public class SequencerServer extends AbstractServer {
      * The response contains the requested streams address maps and the global log tail.
      */
     @RequestHandler(type = PayloadCase.STREAMS_ADDRESS_REQUEST)
-    private void handleStreamsAddressRequest(@Nonnull RequestMsg req,
+    public void handleStreamsAddressRequest(@Nonnull RequestMsg req,
                                              @Nonnull ChannelHandlerContext ctx,
                                              @Nonnull IServerRouter r) {
         StreamsAddressRequestMsg streamsAddressRequest =
