@@ -3,6 +3,7 @@ package org.corfudb.runtime;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelPipeline;
 import io.netty.channel.embedded.EmbeddedChannel;
+import io.netty.handler.ssl.SslHandler;
 import org.corfudb.common.util.CompatibilityVectorUtils;
 import org.corfudb.protocols.service.CorfuProtocolMessage.ClusterIdCheck;
 import org.corfudb.protocols.service.CorfuProtocolMessage.EpochCheck;
@@ -17,6 +18,8 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
+import javax.net.ssl.SSLEngine;
+import javax.net.ssl.SSLSession;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -42,6 +45,10 @@ public class ClientHandshakeHandlerTest {
     private ChannelHandlerContext mockChannelContext;
 
     private ChannelPipeline mockChannelPipeline;
+
+    SSLSession mockSslSession;
+    SSLEngine mockSslEngine;
+    SslHandler mockSslHandler;
 
     // ClientHandshakeHandler instance we are testing with.
     private ClientHandshakeHandler clientHandshakeHandler;
@@ -75,6 +82,18 @@ public class ClientHandshakeHandlerTest {
         embeddedChannel = new EmbeddedChannel(clientHandshakeHandler);
         mockChannelContext = mock(ChannelHandlerContext.class);
         mockChannelPipeline = mock(ChannelPipeline.class);
+
+        mockSslSession = mock(SSLSession.class);
+        when(mockSslSession.getCipherSuite()).thenReturn("TEST_CIPHER");
+        when(mockSslSession.getProtocol()).thenReturn("TEST_PROTOCOL");
+
+        mockSslEngine = mock(SSLEngine.class);
+        when(mockSslEngine.getSession()).thenReturn(mockSslSession);
+
+        mockSslHandler = mock(SslHandler.class);
+        when(mockSslHandler.engine()).thenReturn(mockSslEngine);
+
+        when((SslHandler)mockChannelPipeline.get("ssl")).thenReturn(mockSslHandler);
     }
 
     @Test
@@ -145,7 +164,7 @@ public class ClientHandshakeHandlerTest {
     }
 
     @Test
-    public void testResponsePassedAfterHandshake() {
+    public void testResponsePassedAfterHandshake() throws Exception {
         // Take out the handshake request message upon channelActive.
         Object out = embeddedChannel.readOutbound();
         assertTrue(out instanceof RequestMsg);
@@ -161,7 +180,11 @@ public class ClientHandshakeHandlerTest {
                 getPingResponseMsg()
         );
 
-        embeddedChannel.writeInbound(handshakeResponse);
+        when(mockChannelContext.pipeline()).thenReturn(mockChannelPipeline);
+        when(mockChannelPipeline.remove("readTimeoutHandler")).thenReturn(clientHandshakeHandler);
+        clientHandshakeHandler.channelRead(mockChannelContext, handshakeResponse);
+
+        // Send a ping Response to the client
         embeddedChannel.writeInbound(pingResponse);
 
         // Verify that the ping response is passed to next handler.

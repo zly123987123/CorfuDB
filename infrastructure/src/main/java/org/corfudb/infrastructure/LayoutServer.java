@@ -24,6 +24,7 @@ import org.corfudb.runtime.proto.service.Layout.ProposeLayoutRequestMsg;
 import org.corfudb.runtime.view.Layout;
 
 import static org.corfudb.protocols.CorfuProtocolCommon.getLayout;
+import static org.corfudb.protocols.CorfuProtocolCommon.getRemoteHostAddressFromCtx;
 import static org.corfudb.protocols.CorfuProtocolCommon.getUUID;
 import static org.corfudb.protocols.CorfuProtocolServerErrors.getBootstrappedErrorMsg;
 import static org.corfudb.protocols.CorfuProtocolServerErrors.getWrongEpochErrorMsg;
@@ -176,7 +177,9 @@ public class LayoutServer extends AbstractServer {
         ResponseMsg response;
 
         if (getCurrentLayout() != null) {
-            log.warn("handleBootstrapLayoutRequest[{}]: Server is already bootstrapped!", requestHeader.getRequestId());
+            log.warn("handleBootstrapLayoutRequest[{}]: Received from {}:{}. But the server is " +
+                    "already bootstrapped!", getUUID(req.getHeader().getClientId()),
+                    getRemoteHostAddressFromCtx(ctx), requestHeader.getRequestId());
 
             responseHeader = getHeaderMsg(requestHeader, ClusterIdCheck.CHECK, EpochCheck.IGNORE);
             response = getResponseMsg(responseHeader, getBootstrappedErrorMsg());
@@ -225,19 +228,24 @@ public class LayoutServer extends AbstractServer {
     @RequestHandler(type = RequestPayloadMsg.PayloadCase.PREPARE_LAYOUT_REQUEST)
     void handlePrepareLayoutRequest(@Nonnull RequestMsg req, @Nonnull ChannelHandlerContext ctx,
                                            @Nonnull IServerRouter r) {
+
         final HeaderMsg requestHeader = req.getHeader();
         final PrepareLayoutRequestMsg payload = req.getPayload().getPrepareLayoutRequest();
-
-        if (!isBootstrapped(req)) {
-            r.sendNoBootstrapError(req.getHeader(), ctx);
-            return;
-        }
-
         final long payloadEpoch = payload.getEpoch();
         final long serverEpoch = getServerEpoch();
 
         final Rank phase1Rank = getPhase1Rank(payloadEpoch);
         final Rank prepareRank = new Rank(payload.getRank(), getUUID(requestHeader.getClientId()));
+
+        log.debug("handlePrepareLayoutRequest[{}]: Received from {}:{}, " +
+                        "phase 1 prepare of rank={}, phase1Rank={}, requestEpoch={}",
+                requestHeader.getRequestId(), getUUID(req.getHeader().getClientId()),
+                getRemoteHostAddressFromCtx(ctx), prepareRank, phase1Rank, payloadEpoch);
+
+        if (!isBootstrapped(req)) {
+            r.sendNoBootstrapError(req.getHeader(), ctx);
+            return;
+        }
 
         if (payloadEpoch != serverEpoch) {
             HeaderMsg responseHeader = getHeaderMsg(req.getHeader(), ClusterIdCheck.CHECK, EpochCheck.IGNORE);
@@ -252,8 +260,10 @@ public class LayoutServer extends AbstractServer {
 
         // If the PREPARE_LAYOUT_REQUEST rank is less than or equal to the highest phase 1 rank, reject.
         if (phase1Rank != null && prepareRank.lessThanEqualTo(phase1Rank)) {
-            log.debug("handlePrepareLayoutRequest[{}]: Rejected phase 1 prepare of rank={}, phase1Rank={}",
-                    requestHeader.getRequestId(), prepareRank, phase1Rank);
+            log.debug("handlePrepareLayoutRequest[{}]: Rejected request from {}:{}," +
+                            "phase 1 prepare of rank={}, phase1Rank={}, requestEpoch={}",
+                    requestHeader.getRequestId(), getUUID(req.getHeader().getClientId()),
+                    getRemoteHostAddressFromCtx(ctx), prepareRank, phase1Rank, payloadEpoch);
 
             responseHeader = getHeaderMsg(requestHeader, ClusterIdCheck.CHECK, EpochCheck.CHECK);
             response = getResponseMsg(responseHeader, getPrepareLayoutResponseMsg(
@@ -449,6 +459,11 @@ public class LayoutServer extends AbstractServer {
         final long payloadEpoch = payload.getEpoch();
         final long serverEpoch = getServerEpoch();
         final Layout layout = getLayout(payload.getLayout());
+        log.info("handleCommitLayoutRequest[{}]: Received from : {}:{}, " +
+                        "New Layout {}", req.getHeader().getRequestId(),
+                getUUID(req.getHeader().getClientId()),
+                getRemoteHostAddressFromCtx(ctx),
+                layout);
 
         if (payloadEpoch < serverEpoch) {
             HeaderMsg responseHeader = getHeaderMsg(req.getHeader(), ClusterIdCheck.CHECK, EpochCheck.IGNORE);
@@ -464,7 +479,11 @@ public class LayoutServer extends AbstractServer {
         ResponseMsg response = getResponseMsg(responseHeader,
                 getCommitLayoutResponseMsg(true));
 
-        log.info("handleCommitLayoutRequest[{}]: New layout committed: {}", req.getHeader().getRequestId(), layout);
+        log.info("handleCommitLayoutRequest[{}]: New layout, received from : {}:{}, committed: {}",
+                req.getHeader().getRequestId(),
+                getUUID(req.getHeader().getClientId()),
+                getRemoteHostAddressFromCtx(ctx),
+                layout);
         r.sendResponse(response, ctx);
     }
 
