@@ -17,6 +17,7 @@ import io.netty.buffer.ByteBufOutputStream;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 
+import org.apache.commons.io.FileUtils;
 import org.corfudb.runtime.CorfuRuntime;
 import org.corfudb.runtime.CorfuStoreMetadata.ProtobufFileName;
 import org.corfudb.runtime.CorfuStoreMetadata.ProtobufFileDescriptor;
@@ -32,9 +33,12 @@ import org.corfudb.runtime.exceptions.SerializerException;
 import org.corfudb.runtime.view.ObjectOpenOption;
 import org.corfudb.util.serializer.ProtobufSerializer.MessageType;
 
+import java.io.File;
 import java.io.IOException;
+import java.nio.channels.FileChannel;
 import java.util.ArrayList;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -100,9 +104,72 @@ public class DynamicProtobufSerializer implements ISerializer {
         TableMetadata>> cachedProtobufDescriptorTable =
         new ConcurrentHashMap<>();
 
-    public DynamicProtobufSerializer(String offlineLogPath) {
+    //original constructor that uses runtime
+    public DynamicProtobufSerializer(CorfuRuntime corfuRuntime) {
         this.type = ProtobufSerializer.PROTOBUF_SERIALIZER_CODE;
 
+        // Create or get a protobuf serializer to read the table registry.
+        ISerializer protobufSerializer;
+        try {
+            protobufSerializer = corfuRuntime.getSerializers().getSerializer(ProtobufSerializer.PROTOBUF_SERIALIZER_CODE);
+        } catch (SerializerException se) {
+            // This means the protobuf serializer had not been registered yet.
+            log.info("Protobuf Serializer not found. Create and register a new one.");
+            protobufSerializer = createProtobufSerializer();
+            corfuRuntime.getSerializers().registerSerializer(protobufSerializer);
+        }
+
+        // Open the Registry Table and cache its contents
+        CorfuTable<TableName, CorfuRecord<TableDescriptors, TableMetadata>> registryTable =
+                corfuRuntime.getObjectsView()
+                        .build()
+                        .setTypeToken(new TypeToken<CorfuTable<TableName,
+                                CorfuRecord<TableDescriptors, TableMetadata>>>() {
+                        })
+                        .setStreamName(
+                                getFullyQualifiedTableName(CORFU_SYSTEM_NAMESPACE,
+                                        REGISTRY_TABLE_NAME))
+                        .setSerializer(protobufSerializer)
+                        .addOpenOption(ObjectOpenOption.NO_CACHE)
+                        .open();
+        registryTable.forEach((tableName, descriptors) ->
+                cachedRegistryTable.put(tableName, descriptors));
+
+        // Open the Protobuf Descriptor Table.
+        CorfuTable<ProtobufFileName, CorfuRecord<ProtobufFileDescriptor, TableMetadata>> descriptorTable = corfuRuntime.getObjectsView()
+                .build()
+                .setTypeToken(new TypeToken<CorfuTable<ProtobufFileName, CorfuRecord<ProtobufFileDescriptor, TableMetadata>>>() {
+                })
+                .setStreamName(getFullyQualifiedTableName(CORFU_SYSTEM_NAMESPACE,
+                        PROTOBUF_DESCRIPTOR_TABLE_NAME))
+                .setSerializer(protobufSerializer)
+                .addOpenOption(ObjectOpenOption.NO_CACHE)
+                .open();
+
+        // Cache the FileDescriptorProtos from the protobuf descriptor table.
+        descriptorTable.forEach((fdName, fileDescriptorProto) -> {
+            String protoFileName = fileDescriptorProto.getPayload().getFileDescriptor().getName();
+            // Since corfu_options is something within repo, the path gets truncated on insert.
+            // However dynamicProtobufSerializer fails since the full path is needed.
+            if (protoFileName.equals("corfu_options.proto")) {
+                fdProtoMap.putIfAbsent(protoFileName, fileDescriptorProto.getPayload().getFileDescriptor());
+                // Until the truncating issue can be addressed, manually add both paths.
+                protoFileName = "corfudb/runtime/corfu_options.proto";
+            }
+            fdProtoMap.putIfAbsent(protoFileName, fileDescriptorProto.getPayload().getFileDescriptor());
+            identifyMessageTypesinFileDescriptorProto(fileDescriptorProto.getPayload().getFileDescriptor());
+
+            // cache the entry
+            cachedProtobufDescriptorTable.put(fdName, fileDescriptorProto);
+        });
+
+        // Remove the protobuf serializer
+        corfuRuntime.getSerializers().clearCustomSerializers();
+    }
+
+    //overloaded constructor that does not use runtime
+    public DynamicProtobufSerializer(String offlineLogPath) {
+        this.type = ProtobufSerializer.PROTOBUF_SERIALIZER_CODE;
         // Iterate over all the records in the log files
         // If the record belongs to the CorfuSystem$RegistryTable
         // decompress, deserialize, and insert it into the cachedRegistryTable
