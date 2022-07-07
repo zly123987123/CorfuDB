@@ -166,7 +166,7 @@ public class DynamicProtobufSerializer implements ISerializer {
         // Remove the protobuf serializer
         corfuRuntime.getSerializers().clearCustomSerializers();
     }
-
+/*
     //overloaded constructor that does not use runtime
     public DynamicProtobufSerializer(String offlineLogPath) {
         this.type = ProtobufSerializer.PROTOBUF_SERIALIZER_CODE;
@@ -189,6 +189,8 @@ public class DynamicProtobufSerializer implements ISerializer {
             cachedProtobufDescriptorTable.put(fdName, fileDescriptorProto);
         };
     }
+
+ */
 
     /**
      * Create a protobuf serializer.
