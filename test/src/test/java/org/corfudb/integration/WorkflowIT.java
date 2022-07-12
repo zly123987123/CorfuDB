@@ -283,7 +283,6 @@ public class WorkflowIT extends AbstractIT {
         Node n0 = nodeList.get(0);
         Node n1 = harness.deployUnbootstrappedNode(PORT_1);
         Node n2 = harness.deployUnbootstrappedNode(PORT_2);
-
         runtime = harness.createRuntimeForNode(n0);
         final String streamName = "test";
         CorfuTable<String, Integer> table = runtime.getObjectsView()

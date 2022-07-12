@@ -80,7 +80,7 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-failsafe-plugin</artifactId>
-                <version>3.0.0-M5</version>
+                <version>3.0.0-M1</version>
                 <configuration>
                     <skipITs>true</skipITs>
                     <trimStackTrace>false</trimStackTrace>
@@ -97,9 +97,32 @@
             <build>
                 <plugins>
                     <plugin>
+                        <groupId>org.jacoco</groupId>
+                        <artifactId>jacoco-maven-plugin</artifactId>
+                        <version>${jacoco.version}</version>
+                        <executions>
+                            <execution>
+                                <id>prepare-universe-agent</id>
+                                <goals>
+                                    <goal>prepare-agent-integration</goal>
+                                </goals>
+                                <configuration>
+                                    <destFile>${project.build.directory}/jacoco-universe-tests.exec</destFile>
+                                    <propertyName>failsafe.jacoco.args</propertyName>
+                                </configuration>
+                            </execution>
+                            <execution>
+                                <id>report</id>
+                                <goals>
+                                    <goal>report</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
                         <groupId>org.apache.maven.plugins</groupId>
                         <artifactId>maven-failsafe-plugin</artifactId>
-                        <version>3.0.0-M5</version>
+                        <version>3.0.0-M1</version>
                         <executions>
                             <execution>
                                 <id>integration-test</id>
@@ -110,11 +133,72 @@
                             </execution>
                         </executions>
                         <configuration>
+                            <argLine>-Xmx1024m -XX:MaxPermSize=256m ${failsafe.jacoco.args}</argLine>
                             <skipITs>false</skipITs>
                             <reuseForks>false</reuseForks>
                             <trimStackTrace>false</trimStackTrace>
                             <!-- Option to generate a file test report or just output the test report to the console. -->
-                            <useFile>false</useFile>
+<!--                            <useFile>false</useFile>-->
+                            <systemProperties>
+                                <property>
+                                    <name>project.version</name>
+                                    <value>${project.version}</value>
+                                </property>
+                            </systemProperties>
+                            <workingDirectory>${project.build.directory}/fork_${surefire.forkNumber}</workingDirectory>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+        <profile>
+            <id>codecov</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.jacoco</groupId>
+                        <artifactId>jacoco-maven-plugin</artifactId>
+                        <version>${jacoco.version}</version>
+                        <executions>
+                            <execution>
+                                <id>prepare-universe-agent</id>
+                                <goals>
+                                    <goal>prepare-agent-integration</goal>
+                                </goals>
+                                <configuration>
+                                    <destFile>${project.build.directory}/jacoco-universe-tests.exec</destFile>
+                                    <propertyName>failsafe.jacoco.args</propertyName>
+                                </configuration>
+                            </execution>
+                            <execution>
+                                <id>report</id>
+                                <goals>
+                                    <goal>report</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-failsafe-plugin</artifactId>
+                        <version>3.0.0-M1</version>
+                        <executions>
+                            <execution>
+                                <id>integration-test</id>
+                                <goals>
+                                    <goal>integration-test</goal>
+                                    <goal>verify</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                        <configuration>
+                            <argLine>-Xmx1024m -XX:MaxPermSize=256m ${failsafe.jacoco.args}</argLine>
+                            <skipITs>false</skipITs>
+                            <reuseForks>false</reuseForks>
+                            <trimStackTrace>false</trimStackTrace>
+                            <!-- Option to generate a file test report or just output the test report to the console. -->
+                            <!--                            <useFile>false</useFile>-->
                             <systemProperties>
                                 <property>
                                     <name>project.version</name>
