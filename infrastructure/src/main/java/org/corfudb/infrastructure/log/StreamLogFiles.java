@@ -350,10 +350,15 @@ public class StreamLogFiles implements StreamLog {
         return address < dataStore.getStartingAddress();
     }
 
+    /**
+     * Verify that it is okay to open Log Files. The file directory and header must be valid.
+     *
+     */
     private void verifyLogs() {
         String[] extension = {"log"};
         File dir = logDir.toFile();
 
+        // if the file directory doesn't exist
         if (!dir.exists()) {
             throw new UnrecoverableCorfuError("Stream log data directory doesn't exists");
         }
@@ -542,6 +547,14 @@ public class StreamLogFiles implements StreamLog {
         return metadata;
     }
 
+    /**
+     * If there is a problem with the file, throw an error message.
+     *
+     * @param message   The error message.
+     * @param fileChannel   The fileChannel opened.
+     * @param segmentFile   The segmentFile.
+     * @throws IOException IO exception
+     */
     private String getDataCorruptionErrorMessage(
             String message, FileChannel fileChannel, String segmentFile) throws IOException {
         return getDataCorruptionErrorMessage(this, message, fileChannel, segmentFile);
@@ -579,9 +592,10 @@ public class StreamLogFiles implements StreamLog {
 
     /**
      * Parse the logfile header, or create it, or recreate it if it was
-     * partially written.
+     * partially written. The logfile header tells us information about the logfile and is located in the beginning.
      *
      * @param channel file channel
+     * @param segmentFile segment file
      * @return log header
      * @throws IOException IO exception
      */
@@ -628,10 +642,12 @@ public class StreamLogFiles implements StreamLog {
     }
 
     /**
-     * Parse an entry.
+     * Parse an entry. Log entries are located after the header and metadata sections and are single
+     * records in a logfile.
      *
      * @param channel  file channel
      * @param metadata meta data
+     * @param fileName file name
      * @return an log entry
      * @throws IOException IO exception
      */
