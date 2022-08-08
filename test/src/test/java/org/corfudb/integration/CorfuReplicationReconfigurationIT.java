@@ -13,7 +13,6 @@ import org.corfudb.runtime.CorfuRuntime;
 import org.corfudb.runtime.CorfuStoreMetadata;
 import org.corfudb.runtime.collections.CorfuStore;
 import org.corfudb.runtime.collections.CorfuStreamEntries;
-import org.corfudb.runtime.collections.CorfuStreamEntry;
 import org.corfudb.runtime.collections.StreamListener;
 import org.corfudb.runtime.collections.Table;
 import org.corfudb.runtime.collections.TableOptions;
@@ -740,44 +739,6 @@ public class CorfuReplicationReconfigurationIT extends LogReplicationAbstractIT 
                     txn.commit();
                 }
             }
-        }
-    }
-
-    /**
-     * Stream Listener used for testing streaming on standby site. This listener decreases a latch
-     * until all expected updates are received/
-     */
-    public static class StreamingStandbyListener implements StreamListener {
-
-        private final CountDownLatch updatesLatch;
-        public List<CorfuStreamEntry> messages = new ArrayList<>();
-        private final Set<UUID> tablesToListenTo;
-
-        public StreamingStandbyListener(CountDownLatch updatesLatch, Set<UUID> tablesToListenTo) {
-            this.updatesLatch = updatesLatch;
-            this.tablesToListenTo = tablesToListenTo;
-        }
-
-        @Override
-        public synchronized void onNext(CorfuStreamEntries results) {
-            log.info("StreamingStandbyListener:: onNext {} with entry size {}", results, results.getEntries().size());
-
-            results.getEntries().forEach((schema, entries) -> {
-                if (tablesToListenTo.contains(CorfuRuntime.getStreamID(NAMESPACE + "$" + schema.getTableName()))) {
-                    messages.addAll(entries);
-                    entries.forEach(e -> {
-                        if (e.getOperation() == CorfuStreamEntry.OperationType.CLEAR) {
-                            System.out.println("Clear operation for :: " + schema.getTableName() + " on address :: " + results.getTimestamp().getSequence() + " key :: " + e.getKey());
-                        }
-                        updatesLatch.countDown();
-                    });
-                }
-            });
-        }
-
-        @Override
-        public void onError(Throwable throwable) {
-            log.error("ERROR :: unsubscribed listener");
         }
     }
 }

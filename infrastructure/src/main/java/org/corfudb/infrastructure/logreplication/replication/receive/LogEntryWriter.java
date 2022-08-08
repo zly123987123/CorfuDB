@@ -3,6 +3,7 @@ package org.corfudb.infrastructure.logreplication.replication.receive;
 import com.google.protobuf.TextFormat;
 import lombok.extern.slf4j.Slf4j;
 import org.corfudb.infrastructure.logreplication.LogReplicationConfig;
+import org.corfudb.infrastructure.logreplication.proto.LogReplicationClusterInfo.StreamsDiscoveryMode;
 import org.corfudb.protocols.logprotocol.OpaqueEntry;
 import org.corfudb.protocols.logprotocol.SMREntry;
 import org.corfudb.protocols.service.CorfuProtocolLogReplication;
@@ -16,7 +17,6 @@ import org.corfudb.infrastructure.logreplication.replication.receive.LogReplicat
 
 import javax.annotation.concurrent.NotThreadSafe;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -31,20 +31,14 @@ import static org.corfudb.infrastructure.logreplication.LogReplicationConfig.REG
 @Slf4j
 public class LogEntryWriter extends SinkWriter {
     private final LogReplicationMetadataManager logReplicationMetadataManager;
-    private final HashMap<UUID, String> streamMap; //the set of streams that log entry writer will work on.
-    private final Map<UUID, List<UUID>> dataStreamToTagsMap;
     private long srcGlobalSnapshot; //the source snapshot that the transaction logs are based
     private long lastMsgTs; //the timestamp of the last message processed.
 
     public LogEntryWriter(CorfuRuntime rt, LogReplicationConfig config, LogReplicationMetadataManager logReplicationMetadataManager) {
-        super(rt);
+        super(rt, config);
         this.logReplicationMetadataManager = logReplicationMetadataManager;
         this.srcGlobalSnapshot = Address.NON_ADDRESS;
         this.lastMsgTs = Address.NON_ADDRESS;
-        this.streamMap = new HashMap<>();
-        this.dataStreamToTagsMap = config.getDataStreamToTagsMap();
-
-        config.getStreamsToReplicate().stream().forEach(stream -> streamMap.put(CorfuRuntime.getStreamID(stream), stream));
     }
 
     /**
@@ -70,6 +64,12 @@ public class LogEntryWriter extends SinkWriter {
         List<OpaqueEntry> opaqueEntryList = CorfuProtocolLogReplication.extractOpaqueEntries(txMessage);
 
         try (TxnContext txnContext = logReplicationMetadataManager.getTxnContext()) {
+            if (config.getStreamsDiscoveryMode().equals(StreamsDiscoveryMode.DYNAMIC)) {
+                // Sync with registry table when entering this transaction, to make sure the config captures newly
+                // opened tables on Sink side. Note that opening new tables is not allowed within a transaction, so
+                // we can make sure config is up-to-date on Sink side and only need to consider new entries.
+                config.syncWithRegistry();
+            }
 
             Map<LogReplicationMetadataType, Long> metadataMap = logReplicationMetadataManager.queryMetadata(
                     txnContext, LogReplicationMetadataType.TOPOLOGY_CONFIG_ID, LogReplicationMetadataType.LAST_SNAPSHOT_STARTED,
@@ -102,7 +102,7 @@ public class LogEntryWriter extends SinkWriter {
 
             for (OpaqueEntry opaqueEntry : newOpaqueEntryList) {
                 for (UUID streamId : opaqueEntry.getEntries().keySet()) {
-                    if (!streamMap.containsKey(streamId)) {
+                    if (ignoreEntriesForStream(streamId)) {
                         log.warn("Skip applying log entries for stream {} as it is noisy. LR could be undergoing a rolling upgrade", streamId);
                         continue;
                     }
@@ -110,12 +110,22 @@ public class LogEntryWriter extends SinkWriter {
                     List<SMREntry> smrEntries = opaqueEntry.getEntries().get(streamId);
                     if (streamId.equals(REGISTRY_TABLE_ID)) {
                         // Only retain tables that are not present in the registry table
-                        smrEntries = fetchNewEntries(new ArrayList<>(smrEntries));
-                    }
-
-                    for (SMREntry smrEntry : smrEntries) {
-                        // If stream tags exist for the current stream, it means its intended for streaming on the Sink (receiver)
-                        txnContext.logUpdate(streamId, smrEntry, dataStreamToTagsMap.get(streamId));
+                        List<SMREntry> newEntries = fetchNewEntries(new ArrayList<>(smrEntries));
+                        for (SMREntry smrEntry : newEntries) {
+                            // If stream tags exist for the current stream, it means its intended for streaming on the Sink (receiver)
+                            txnContext.logUpdate(streamId, smrEntry, config.getDataStreamToTagsMap().get(streamId));
+                        }
+                        if (!newEntries.isEmpty() && config.getStreamsDiscoveryMode().equals(StreamsDiscoveryMode.DYNAMIC)) {
+                            // In DYNAMIC mode, if there are new entries for registry table, update the config after
+                            // applying these new entries
+                            log.info("{} new entries for registry table found during log entry sync.", newEntries.size());
+                            config.syncWithRegistry();
+                        }
+                    } else {
+                        for (SMREntry smrEntry : smrEntries) {
+                            // If stream tags exist for the current stream, it means its intended for streaming on the Sink (receiver)
+                            txnContext.logUpdate(streamId, smrEntry, config.getDataStreamToTagsMap().get(streamId));
+                        }
                     }
                 }
             }
@@ -177,5 +187,9 @@ public class LogEntryWriter extends SinkWriter {
     public void reset(long snapshot, long ackTimestamp) {
         srcGlobalSnapshot = snapshot;
         lastMsgTs = ackTimestamp;
+        if (config.getStreamsDiscoveryMode().equals(StreamsDiscoveryMode.DYNAMIC)) {
+            // If LR is in DYNAMIC mode, sync with registry table to avoid data loss
+            config.syncWithRegistry();
+        }
     }
 }

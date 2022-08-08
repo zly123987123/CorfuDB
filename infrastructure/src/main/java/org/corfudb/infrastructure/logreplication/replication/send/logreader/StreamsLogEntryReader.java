@@ -9,6 +9,7 @@ import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
 import org.corfudb.common.metrics.micrometer.MeterRegistryProvider;
 import org.corfudb.infrastructure.logreplication.LogReplicationConfig;
+import org.corfudb.infrastructure.logreplication.proto.LogReplicationClusterInfo.StreamsDiscoveryMode;
 import org.corfudb.protocols.logprotocol.OpaqueEntry;
 import org.corfudb.protocols.logprotocol.SMREntry;
 import org.corfudb.runtime.CorfuRuntime;
@@ -47,6 +48,8 @@ public class StreamsLogEntryReader implements LogEntryReader {
 
     private final LogReplicationEntryType MSG_TYPE = LogReplicationEntryType.LOG_ENTRY_MESSAGE;
 
+    private final LogReplicationConfig config;
+
     // Set of UUIDs for the corresponding streams
     private Set<UUID> streamUUIDs;
 
@@ -82,23 +85,32 @@ public class StreamsLogEntryReader implements LogEntryReader {
 
     public StreamsLogEntryReader(CorfuRuntime runtime, LogReplicationConfig config) {
         runtime.parseConfigurationString(runtime.getLayoutServers().get(0)).connect();
+        this.config = config;
         this.maxDataSizePerMsg = config.getMaxDataSizePerMsg();
         this.currentProcessedEntryMetadata = new StreamIteratorMetadata(Address.NON_ADDRESS, false);
         this.messageSizeDistributionSummary = configureMessageSizeDistributionSummary();
         this.deltaCounter = configureDeltaCounter();
         this.validDeltaCounter = configureValidDeltaCounter();
         this.opaqueEntryCounter = configureOpaqueEntryCounter();
+
+        // Get UUIDs for streams to replicate
+        refreshStreamUUIDs();
+        //create an opaque stream for transaction stream
+        txOpaqueStream = new TxOpaqueStream(runtime);
+    }
+
+    /**
+     * Get streams to replicate from config and convert them into stream ids. This method will be invoked at
+     * constructor and when LogReplicationConfig is synced with registry table in DYNAMIC mode.
+     */
+    private void refreshStreamUUIDs() {
         Set<String> streams = config.getStreamsToReplicate();
 
         streamUUIDs = new HashSet<>();
         for (String s : streams) {
             streamUUIDs.add(CorfuRuntime.getStreamID(s));
         }
-
         log.debug("Streams to replicate total={}, stream_names={}, stream_ids={}", streamUUIDs.size(), streams, streamUUIDs);
-
-        //create an opaque stream for transaction stream
-        txOpaqueStream = new TxOpaqueStream(runtime);
     }
 
     private LogReplicationEntryMsg generateMessageWithOpaqueEntryList(
@@ -146,6 +158,14 @@ public class StreamsLogEntryReader implements LogEntryReader {
             return false;
         }
 
+        // In DYNAMIC mode, chances are that tables corresponding to some streams to replicate were not opened
+        // when LogReplicationConfig was initialized. So these streams will be missing from the list of streams to
+        // replicate. Check the registry table and add them to the list in that case.
+        if (config.getStreamsDiscoveryMode().equals(StreamsDiscoveryMode.DYNAMIC) &&
+                !streamUUIDs.containsAll(txEntryStreamIds)) {
+            config.syncWithRegistry();
+            refreshStreamUUIDs();
+        }
         // If none of the streams in the transaction entry are specified to be replicated, this is an invalid entry, skip
         if (Collections.disjoint(streamUUIDs, txEntryStreamIds)) {
             log.trace("TX Stream entry[{}] :: contains none of the streams of interest, streams={} [ignored]", entry.getVersion(), txEntryStreamIds);

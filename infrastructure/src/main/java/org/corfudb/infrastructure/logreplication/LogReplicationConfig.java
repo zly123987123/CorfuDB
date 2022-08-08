@@ -4,6 +4,9 @@ import com.google.common.annotations.VisibleForTesting;
 import lombok.Data;
 import lombok.ToString;
 import lombok.extern.slf4j.Slf4j;
+import org.corfudb.infrastructure.logreplication.infrastructure.CorfuReplicationDiscoveryService;
+import org.corfudb.infrastructure.logreplication.proto.LogReplicationClusterInfo.StreamsDiscoveryMode;
+import org.corfudb.infrastructure.logreplication.utils.LogReplicationConfigManager;
 import org.corfudb.runtime.CorfuRuntime;
 import org.corfudb.runtime.view.TableRegistry;
 
@@ -59,8 +62,22 @@ public class LogReplicationConfig {
             PROTOBUF_TABLE_ID
     ));
 
+    // Indicate how streamsToReplicate and dataStreamToTagsMap are generated. In STATIC mode they are read from
+    // external adapter, while in DYNAMIC mode they are built by querying registry table. It is STATIC by default.
+    private StreamsDiscoveryMode streamsDiscoveryMode = StreamsDiscoveryMode.STATIC;
+
+    // LogReplicationConfigManager contains a suite of utility methods for updating LogReplicationConfig
+    private LogReplicationConfigManager configManager;
+
     // Unique identifiers for all streams to be replicated across sites
     private Set<String> streamsToReplicate;
+
+    // Mapping from stream ids to their fully qualified names.
+    private Map<UUID, String> streamMap;
+
+    // In DYNAMIC mode, only drop streams that have explicitly set is_federated flag to false
+    // If streams have not been opened (no records in registry table), they should still be applied
+    private Set<UUID> confirmedNoisyStreams;
 
     // Streaming tags on Sink (map data stream id to list of tags associated to it)
     private Map<UUID, List<UUID>> dataStreamToTagsMap = new HashMap<>();
@@ -80,7 +97,7 @@ public class LogReplicationConfig {
     private int maxDataSizePerMsg;
 
     /**
-     * Constructor
+     * Constructor for testing purpose
      *
      * @param streamsToReplicate Unique identifiers for all streams to be replicated across sites.
      */
@@ -90,32 +107,60 @@ public class LogReplicationConfig {
     }
 
     /**
-     * Constructor
+     * Constructor for testing purpose
      *
      * @param streamsToReplicate Unique identifiers for all streams to be replicated across sites.
      * @param maxNumMsgPerBatch snapshot sync batch size (number of entries per batch)
      */
-    public LogReplicationConfig(Set<String> streamsToReplicate, int maxNumMsgPerBatch, int maxMsgSize, int cacheSize) {
+    @VisibleForTesting
+    public LogReplicationConfig(Set<String> streamsToReplicate, int maxNumMsgPerBatch, int maxMsgSize) {
+        this(streamsToReplicate, maxNumMsgPerBatch, maxMsgSize, MAX_CACHE_NUM_ENTRIES);
+    }
+
+    /**
+     * Constructor exposed to {@link CorfuReplicationDiscoveryService}
+     */
+    public LogReplicationConfig(LogReplicationConfigManager configManager,
+                                int maxNumMsgPerBatch, int maxMsgSize, int cacheSize) {
+        this(configManager.getStreamsToReplicate(), maxNumMsgPerBatch, maxMsgSize, cacheSize);
+        this.streamsDiscoveryMode = configManager.getStreamsDiscoveryMode();
+        this.dataStreamToTagsMap = configManager.getStreamingConfigOnSink();
+        this.confirmedNoisyStreams = configManager.getConfirmedNoisyStreams();
+        this.configManager = configManager;
+    }
+
+    /**
+     * Constructor for instantiating LogReplicationConfig fields
+     *
+     * @param streamsToReplicate Unique identifiers for all streams to be replicated across sites.
+     * @param maxNumMsgPerBatch snapshot sync batch size (number of entries per batch)
+     */
+    private LogReplicationConfig(Set<String> streamsToReplicate, int maxNumMsgPerBatch, int maxMsgSize, int cacheSize) {
         this.streamsToReplicate = streamsToReplicate;
         this.maxNumMsgPerBatch = maxNumMsgPerBatch;
         this.maxMsgSize = maxMsgSize;
         this.maxCacheSize = cacheSize;
         this.maxDataSizePerMsg = maxMsgSize * DATA_FRACTION_PER_MSG / 100;
+        streamMap = new HashMap<>();
+        streamsToReplicate.forEach(stream -> streamMap.put(CorfuRuntime.getStreamID(stream), stream));
     }
 
     /**
-     * Constructor
-     *
-     * @param streamsToReplicate Unique identifiers for all streams to be replicated across sites.
-     * @param maxNumMsgPerBatch snapshot sync batch size (number of entries per batch)
+     * If the streamsDiscoveryMode is DYNAMIC, some streams to replicate and their stream tags could not be known
+     * before they are opened (on Source) / their entries in registry table are applied (on Sink). Therefore, in
+     * DYNAMIC mode LogReplicationConfig needs to sync with registry table to avoid data loss.
      */
-    public LogReplicationConfig(Set<String> streamsToReplicate, int maxNumMsgPerBatch, int maxMsgSize) {
-        this(streamsToReplicate, maxNumMsgPerBatch, maxMsgSize, MAX_CACHE_NUM_ENTRIES);
-    }
-
-    public LogReplicationConfig(Set<String> streamsToReplicate, Map<UUID, List<UUID>> streamingTagsMap,
-                                int maxNumMsgPerBatch, int maxMsgSize, int cacheSize) {
-        this(streamsToReplicate, maxNumMsgPerBatch, maxMsgSize, cacheSize);
-        this.dataStreamToTagsMap = streamingTagsMap;
+    public void syncWithRegistry() {
+        if (streamsDiscoveryMode.equals(StreamsDiscoveryMode.STATIC)) {
+            log.warn("No need to sync with registry table in STATIC mode! Please use external adapter instead!");
+            return;
+        }
+        this.streamsToReplicate = configManager.getStreamsToReplicate();
+        this.dataStreamToTagsMap = configManager.getStreamingConfigOnSink();
+        this.confirmedNoisyStreams = configManager.getConfirmedNoisyStreams();
+        streamMap = new HashMap<>();
+        streamsToReplicate.forEach(stream -> streamMap.put(CorfuRuntime.getStreamID(stream), stream));
+        log.info("Synced with registry table. Ids for streams to replicate: {}, ids for confirmed noisy streams: {}",
+                streamMap.keySet(), confirmedNoisyStreams);
     }
 }

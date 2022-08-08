@@ -34,3 +34,10 @@ enum ClusterRole {
   NONE = 3;
 }
 
+// Each cluster should have their streams discovery mode
+// specified in the config adapter. By default it is STATIC
+enum StreamsDiscoveryMode {
+  STATIC = 0;
+  DYNAMIC = 1;
+}
+

@@ -3,6 +3,8 @@ package org.corfudb.infrastructure.logreplication.replication.receive;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import lombok.extern.slf4j.Slf4j;
+import org.corfudb.infrastructure.logreplication.LogReplicationConfig;
+import org.corfudb.infrastructure.logreplication.proto.LogReplicationClusterInfo.StreamsDiscoveryMode;
 import org.corfudb.protocols.logprotocol.SMREntry;
 import org.corfudb.runtime.CorfuRuntime;
 import org.corfudb.runtime.CorfuStoreMetadata.TableDescriptors;
@@ -14,6 +16,7 @@ import org.corfudb.util.serializer.ISerializer;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 import static org.corfudb.util.serializer.ProtobufSerializer.PROTOBUF_SERIALIZER_CODE;
 
@@ -29,12 +32,20 @@ public abstract class SinkWriter {
     // Registry table for verifying replicated entries from Source side.
     final CorfuTable<TableName, CorfuRecord<TableDescriptors, TableMetadata>> registryTable;
 
+    // Configuration for LR in Source / Sink cluster.
+    final LogReplicationConfig config;
+
     // Limit the initialization of this class only to its children classes.
-    SinkWriter(CorfuRuntime rt) {
+    SinkWriter(CorfuRuntime rt, LogReplicationConfig config) {
         this.rt = rt;
         // Instantiate TableRegistry and register serializers in advance to avoid opening
         // registry table in log entry writer's transaction
         this.registryTable = rt.getTableRegistry().getRegistryTable();
+        this.config = config;
+        if (config.getStreamsDiscoveryMode().equals(StreamsDiscoveryMode.DYNAMIC)) {
+            // In DYNAMIC mode signal the config to sync with registry table during initialization
+            config.syncWithRegistry();
+        }
     }
 
     /**
@@ -76,5 +87,10 @@ public abstract class SinkWriter {
         }
 
         return newEntries;
+    }
+
+    boolean ignoreEntriesForStream(UUID streamId) {
+        return (config.getStreamsDiscoveryMode().equals(StreamsDiscoveryMode.STATIC) && !config.getStreamMap().containsKey(streamId))
+        || (config.getStreamsDiscoveryMode().equals(StreamsDiscoveryMode.DYNAMIC) && config.getConfirmedNoisyStreams().contains(streamId));
     }
 }

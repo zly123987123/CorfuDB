@@ -422,15 +422,12 @@ public class CorfuReplicationDiscoveryService implements Runnable, CorfuReplicat
             replicationConfigManager =
                 new LogReplicationConfigManager(runtime, serverContext.getPluginConfigFilePath());
 
-            Set<String> streamsToReplicate = replicationConfigManager.getStreamsToReplicate();
-
-            Map<UUID, List<UUID>> streamingConfigSink = replicationConfigManager.getStreamingConfigOnSink();
-
-            return new LogReplicationConfig(streamsToReplicate,
-                    streamingConfigSink,
+            return new LogReplicationConfig(
+                    replicationConfigManager,
                     serverContext.getLogReplicationMaxNumMsgPerBatch(),
                     serverContext.getLogReplicationMaxDataMessageSize(),
-                    serverContext.getLogReplicationCacheMaxSize());
+                    serverContext.getLogReplicationCacheMaxSize()
+            );
         } catch (Throwable t) {
             log.error("Exception when fetching the Replication Config", t);
             throw t;
