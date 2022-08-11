@@ -1,5 +1,7 @@
 package org.corfudb.infrastructure.logreplication.infrastructure.plugins;
 
+import org.corfudb.infrastructure.logreplication.LogReplicationConfig;
+import org.corfudb.infrastructure.logreplication.infrastructure.CorfuReplicationSubscriber;
 import org.corfudb.runtime.CorfuRuntime;
 import org.corfudb.runtime.collections.CorfuStore;
 import org.corfudb.runtime.collections.TableOptions;
@@ -26,6 +28,7 @@ public abstract class DefaultAdapterForUpgrade implements ILogReplicationConfigA
     public static final String TABLE_PREFIX = "Table00";
     public static final String NAMESPACE = "LR-Test";
     public static final String TAG_ONE = "tag_one";
+    public static final String SAMPLE_CLIENT = "SampleClient";
 
     final int indexOne = 1;
     final int indexTwo = 2;
@@ -96,5 +99,12 @@ public abstract class DefaultAdapterForUpgrade implements ILogReplicationConfigA
         streamsToTagsMaps.put(CorfuRuntime.getStreamID(NAMESPACE + SEPARATOR + TABLE_PREFIX + indexTwo),
                 Collections.singletonList(streamTagOneDefaultId));
         return streamsToTagsMaps;
+    }
+
+    @Override
+    public Set<CorfuReplicationSubscriber> getSubscribers() {
+        CorfuReplicationSubscriber subscriber =
+            new CorfuReplicationSubscriber(LogReplicationConfig.ReplicationModel.SINGLE_SOURCE_SINK, SAMPLE_CLIENT);
+        return Collections.singleton(subscriber);
     }
 }
