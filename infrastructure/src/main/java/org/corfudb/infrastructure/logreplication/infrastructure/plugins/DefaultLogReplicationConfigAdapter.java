@@ -1,5 +1,7 @@
 package org.corfudb.infrastructure.logreplication.infrastructure.plugins;
 
+import org.corfudb.infrastructure.logreplication.LogReplicationConfig;
+import org.corfudb.infrastructure.logreplication.infrastructure.CorfuReplicationSubscriber;
 import org.corfudb.runtime.CorfuRuntime;
 import org.corfudb.runtime.view.TableRegistry;
 
@@ -24,6 +26,7 @@ public class DefaultLogReplicationConfigAdapter implements ILogReplicationConfig
     public static final String TABLE_PREFIX = "Table00";
     public static final String NAMESPACE = "LR-Test";
     public static final String TAG_ONE = "tag_one";
+    public static final String SAMPLE_CLIENT = "SampleClient";
     private static final int STREAMING_CONFIG_TABLES_COUNT = 3;
 
     public DefaultLogReplicationConfigAdapter() {
@@ -59,5 +62,12 @@ public class DefaultLogReplicationConfigAdapter implements ILogReplicationConfig
                 Collections.singletonList(streamTagOneDefaultId));
         }
         return streamsToTagsMaps;
+    }
+
+    @Override
+    public Set<CorfuReplicationSubscriber> getSubscribers() {
+        CorfuReplicationSubscriber subscriber =
+            new CorfuReplicationSubscriber(LogReplicationConfig.ReplicationModel.SINGLE_SOURCE_SINK, SAMPLE_CLIENT);
+        return Collections.singleton(subscriber);
     }
 }

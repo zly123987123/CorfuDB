@@ -3,6 +3,7 @@ package org.corfudb.infrastructure.logreplication.utils;
 import com.google.common.annotations.VisibleForTesting;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
+import org.corfudb.infrastructure.logreplication.infrastructure.CorfuReplicationSubscriber;
 import org.corfudb.infrastructure.logreplication.infrastructure.plugins.ILogReplicationConfigAdapter;
 import org.corfudb.infrastructure.logreplication.infrastructure.plugins.LogReplicationPluginConfig;
 import org.corfudb.runtime.CorfuRuntime;
@@ -95,7 +96,7 @@ public class LogReplicationConfigManager {
         }
     }
 
-    public Set<String> getStreamsToReplicate() {
+    public Set<String> getStreamsToReplicate(CorfuReplicationSubscriber replicationSubscriber) {
         try {
             currentVersion = logReplicationConfigAdapter.getVersion();
             Set<String> streams = logReplicationConfigAdapter.fetchStreamsToReplicate();
@@ -137,14 +138,17 @@ public class LogReplicationConfigManager {
         }
     }
 
+    public Set<CorfuReplicationSubscriber> getSubscribers() {
+        return logReplicationConfigAdapter.getSubscribers();
+    }
+
     private void initStreamNameFetcherPlugin() {
         log.info("Plugin :: {}", pluginConfigFilePath);
         LogReplicationPluginConfig config = new LogReplicationPluginConfig(pluginConfigFilePath);
         File jar = new File(config.getStreamFetcherPluginJARPath());
         try (URLClassLoader child = new URLClassLoader(new URL[]{jar.toURI().toURL()}, this.getClass().getClassLoader())) {
             Class plugin = Class.forName(config.getStreamFetcherClassCanonicalName(), true, child);
-            logReplicationConfigAdapter = (ILogReplicationConfigAdapter) plugin.getDeclaredConstructor()
-                    .newInstance();
+            logReplicationConfigAdapter = (ILogReplicationConfigAdapter) plugin.getDeclaredConstructor().newInstance();
         } catch (Exception e) {
             log.error("Fatal error: Failed to get Stream Fetcher Plugin", e);
             throw new UnrecoverableCorfuError(e);
@@ -236,8 +240,7 @@ public class LogReplicationConfigManager {
     public Map<UUID, List<UUID>> getStreamingConfigOnSink() {
         Map<UUID, List<UUID>> streamingConfig = logReplicationConfigAdapter.getStreamingConfigOnSink();
         for (UUID id : MERGE_ONLY_STREAMS) {
-            streamingConfig.put(id,
-                    Collections.singletonList(LOG_REPLICATOR_STREAM_INFO.getStreamId()));
+            streamingConfig.put(id, Collections.singletonList(LOG_REPLICATOR_STREAM_INFO.getStreamId()));
         }
         return streamingConfig;
     }
