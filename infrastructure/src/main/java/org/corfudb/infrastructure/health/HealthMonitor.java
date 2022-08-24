@@ -64,8 +64,12 @@ public class HealthMonitor {
         });
     }
 
-    public void close() {
+    private void close() {
         componentHealthStatus.clear();
+    }
+
+    public static void shutdown() {
+        instance.ifPresent(HealthMonitor::close);
     }
 
     private HealthReport healthReport() {

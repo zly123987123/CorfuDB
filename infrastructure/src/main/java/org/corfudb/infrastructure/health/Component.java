@@ -4,7 +4,9 @@ public enum Component {
 
     FAILURE_DETECTOR("Failure Detector"),
     COMPACTOR("Compactor"),
-    ORCHESTRATOR("Clustering Orchestrator");
+    ORCHESTRATOR("Clustering Orchestrator"),
+    SEQUENCER("Sequencer"),
+    LOG_UNIT("Log Unit");
 
     private final String fullName;
 

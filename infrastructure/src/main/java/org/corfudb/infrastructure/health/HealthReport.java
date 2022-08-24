@@ -3,6 +3,7 @@ package org.corfudb.infrastructure.health;
 import com.google.common.collect.ImmutableMap;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
+import lombok.EqualsAndHashCode;
 import lombok.NonNull;
 import lombok.ToString;
 import org.corfudb.common.util.Tuple;
@@ -12,12 +13,13 @@ import java.util.stream.Collectors;
 
 @Builder
 @ToString
+@EqualsAndHashCode
 public class HealthReport {
 
     @Builder.Default
-    private final boolean status = true;
+    private final boolean status = false;
     @Builder.Default
-    private final String reason = "Healthy";
+    private final String reason = "Unknown";
     @NonNull
     private final ComponentReportedHealthStatus init;
     @NonNull
@@ -30,9 +32,12 @@ public class HealthReport {
         final ComponentReportedHealthStatus runtimeReportedHealthStatus = createRuntimeReportedHealthStatus(componentHealthStatusSnapshot);
         boolean overallStatus = initReportedHealthStatus.allHealthy() && runtimeReportedHealthStatus.allHealthy();
         String overallReason;
-        if (!initReportedHealthStatus.allHealthy()) {
+        if (!initReportedHealthStatus.hasReport()) {
+            overallReason = "Status is unknown";
+        }
+        else if (initReportedHealthStatus.hasReport() && !initReportedHealthStatus.allHealthy()) {
             overallReason = "Some of the services are not initialized";
-        } else if (!runtimeReportedHealthStatus.allHealthy()) {
+        } else if (runtimeReportedHealthStatus.hasReport() && !runtimeReportedHealthStatus.allHealthy()) {
             overallReason = "Some of the services experience runtime health issues";
         } else {
             overallReason = "Healthy";
@@ -61,19 +66,28 @@ public class HealthReport {
         return ComponentReportedHealthStatus.fromMap(componentHealthStatus.entrySet().stream().map(entry -> {
             final Component component = entry.getKey();
             final HealthStatus healthStatus = entry.getValue();
-            return healthStatus.getNextRuntimeIssue()
-                    .map(issue -> Tuple.of(component, new ReportedHealthStatus(false, issue.getDescription())))
-                    .orElseGet(() -> Tuple.of(component, new ReportedHealthStatus(true, "Up and running")));
+            if (healthStatus.getLatestRuntimeIssue().isPresent()) {
+                Issue issue = healthStatus.getLatestRuntimeIssue().get();
+                return Tuple.of(component, new ReportedHealthStatus(false, issue.getDescription()));
+            } else if (!healthStatus.isRuntimeHealthy()) {
+                return Tuple.of(component, new ReportedHealthStatus(false, "Service is not running"));
+            } else {
+                return Tuple.of(component, new ReportedHealthStatus(true, "Up and running"));
+            }
         }).collect(Collectors.toMap(tuple -> tuple.first, tuple -> tuple.second)));
     }
 
     @AllArgsConstructor
+    @ToString
+    @EqualsAndHashCode
     static class ReportedHealthStatus {
         private final boolean status;
         private final String reason;
     }
 
     @AllArgsConstructor
+    @ToString
+    @EqualsAndHashCode
     static class ComponentReportedHealthStatus {
         private final Map<Component, ReportedHealthStatus> report;
 
@@ -82,7 +96,11 @@ public class HealthReport {
         }
 
         public boolean allHealthy() {
-            return report.values().stream().allMatch(healthStatus -> healthStatus.status);
+            return hasReport() && report.values().stream().allMatch(healthStatus -> healthStatus.status);
+        }
+
+        public boolean hasReport() {
+            return !report.isEmpty();
         }
     }
 
