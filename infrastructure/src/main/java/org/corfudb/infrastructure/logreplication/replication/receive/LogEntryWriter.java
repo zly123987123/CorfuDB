@@ -68,42 +68,40 @@ public class LogEntryWriter extends SinkWriter {
      */
     private boolean processMsg(LogReplicationEntryMsg txMessage) {
         List<OpaqueEntry> opaqueEntryList = CorfuProtocolLogReplication.extractOpaqueEntries(txMessage);
+        for (OpaqueEntry opaqueEntry : opaqueEntryList) {
 
-        try (TxnContext txnContext = logReplicationMetadataManager.getTxnContext()) {
+            try (TxnContext txnContext = logReplicationMetadataManager.getTxnContext()) {
 
-            Map<LogReplicationMetadataType, Long> metadataMap = logReplicationMetadataManager.queryMetadata(
+                Map<LogReplicationMetadataType, Long> metadataMap = logReplicationMetadataManager.queryMetadata(
                     txnContext, LogReplicationMetadataType.TOPOLOGY_CONFIG_ID, LogReplicationMetadataType.LAST_SNAPSHOT_STARTED,
                     LogReplicationMetadataType.LAST_SNAPSHOT_APPLIED, LogReplicationMetadataType.LAST_LOG_ENTRY_PROCESSED);
-            long persistedTopologyConfigId = metadataMap.get(LogReplicationMetadataType.TOPOLOGY_CONFIG_ID);
-            long persistedSnapshotStart = metadataMap.get(LogReplicationMetadataType.LAST_SNAPSHOT_STARTED);
-            long persistedSnapshotDone = metadataMap.get(LogReplicationMetadataType.LAST_SNAPSHOT_APPLIED);
-            long persistedLogTs = metadataMap.get(LogReplicationMetadataType.LAST_LOG_ENTRY_PROCESSED);
+                long persistedTopologyConfigId = metadataMap.get(LogReplicationMetadataType.TOPOLOGY_CONFIG_ID);
+                long persistedSnapshotStart = metadataMap.get(LogReplicationMetadataType.LAST_SNAPSHOT_STARTED);
+                long persistedSnapshotDone = metadataMap.get(LogReplicationMetadataType.LAST_SNAPSHOT_APPLIED);
+                long persistedLogTs = metadataMap.get(LogReplicationMetadataType.LAST_LOG_ENTRY_PROCESSED);
 
-            long topologyConfigId = txMessage.getMetadata().getTopologyConfigID();
-            long baseSnapshotTs = txMessage.getMetadata().getSnapshotTimestamp();
-            long entryTs = txMessage.getMetadata().getTimestamp();
-            long prevTs = txMessage.getMetadata().getPreviousTimestamp();
+                long topologyConfigId = txMessage.getMetadata().getTopologyConfigID();
+                long baseSnapshotTs = txMessage.getMetadata().getSnapshotTimestamp();
+                long entryTs = txMessage.getMetadata().getTimestamp();
+                long prevTs = txMessage.getMetadata().getPreviousTimestamp();
 
-            lastMsgTs = Math.max(persistedLogTs, lastMsgTs);
+                lastMsgTs = Math.max(persistedLogTs, lastMsgTs);
 
-            if (topologyConfigId != persistedTopologyConfigId || baseSnapshotTs != persistedSnapshotStart ||
+                if (topologyConfigId != persistedTopologyConfigId || baseSnapshotTs != persistedSnapshotStart ||
                     baseSnapshotTs != persistedSnapshotDone || prevTs != persistedLogTs) {
-                log.warn("Message metadata mismatch. Skip applying message {}, persistedTopologyConfigId={}, persistedSnapshotStart={}, " +
-                                "persistedSnapshotDone={}, persistedLogTs={}", txMessage.getMetadata(), persistedTopologyConfigId,
-                        persistedSnapshotStart, persistedSnapshotDone, persistedLogTs);
-                return false;
-            }
+                    log.warn("Message metadata mismatch. Skip applying message {}, persistedTopologyConfigId={}," +
+                        "persistedSnapshotStart={}, persistedSnapshotDone={}, persistedLogTs={}", txMessage.getMetadata(),
+                        persistedTopologyConfigId, persistedSnapshotStart, persistedSnapshotDone, persistedLogTs);
+                    return false;
+                }
 
-            // Skip Opaque entries with timestamp that are not larger than persistedTs
-            OpaqueEntry[] newOpaqueEntryList = opaqueEntryList.stream().filter(x -> x.getVersion() > persistedLogTs).toArray(OpaqueEntry[]::new);
+                logReplicationMetadataManager.appendUpdate(txnContext, LogReplicationMetadataType.TOPOLOGY_CONFIG_ID, topologyConfigId);
+                logReplicationMetadataManager.appendUpdate(txnContext, LogReplicationMetadataType.LAST_LOG_ENTRY_PROCESSED, entryTs);
 
-            logReplicationMetadataManager.appendUpdate(txnContext, LogReplicationMetadataType.TOPOLOGY_CONFIG_ID, topologyConfigId);
-            logReplicationMetadataManager.appendUpdate(txnContext, LogReplicationMetadataType.LAST_LOG_ENTRY_PROCESSED, entryTs);
-
-            for (OpaqueEntry opaqueEntry : newOpaqueEntryList) {
                 for (UUID streamId : opaqueEntry.getEntries().keySet()) {
                     if (!streamMap.containsKey(streamId)) {
-                        log.warn("Skip applying log entries for stream {} as it is noisy. LR could be undergoing a rolling upgrade", streamId);
+                        log.warn("Skip applying log entries for stream {} as it is noisy. LR could be undergoing a" +
+                            "rolling upgrade", streamId);
                         continue;
                     }
 
@@ -118,12 +116,11 @@ public class LogEntryWriter extends SinkWriter {
                         txnContext.logUpdate(streamId, smrEntry, dataStreamToTagsMap.get(streamId));
                     }
                 }
+                txnContext.commit();
+                lastMsgTs = Math.max(entryTs, lastMsgTs);
             }
-            txnContext.commit();
-
-            lastMsgTs = Math.max(entryTs, lastMsgTs);
-            return true;
         }
+        return true;
     }
 
     /**
