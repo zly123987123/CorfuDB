@@ -37,6 +37,7 @@ public class HealthMonitorTest {
         }
         healthStatusSnapshot = HealthMonitor.getHealthStatusSnapshot();
         assertThat(healthStatusSnapshot.get(Component.COMPACTOR).getInitHealthIssues().size()).isEqualTo(1);
+        HealthMonitor.shutdown();
     }
 
     @Test
@@ -52,6 +53,7 @@ public class HealthMonitorTest {
         assertThat(healthStatusSnapshot.get(Component.COMPACTOR).isInitHealthy()).isTrue();
         assertThat(healthStatusSnapshot.get(Component.FAILURE_DETECTOR).isInitHealthy()).isFalse();
         assertThat(healthStatusSnapshot.get(Component.ORCHESTRATOR).isInitHealthy()).isFalse();
+        HealthMonitor.shutdown();
     }
 
     @Test
@@ -81,6 +83,7 @@ public class HealthMonitorTest {
         assertThat(healthStatusSnapshot.get(Component.FAILURE_DETECTOR).isInitHealthy()).isTrue();
         assertThat(healthStatusSnapshot.get(Component.FAILURE_DETECTOR).isRuntimeHealthy()).isFalse();
         assertThat(healthStatusSnapshot.get(Component.FAILURE_DETECTOR).getRuntimeHealthIssues()).hasSize(2);
+        HealthMonitor.shutdown();
     }
 
     @Test
@@ -91,13 +94,14 @@ public class HealthMonitorTest {
         HealthMonitor.reportIssue(Issue.createIssue(Component.FAILURE_DETECTOR, FAILURE_DETECTOR_TASK_FAILED, "Last failure detection task failed"));
         HealthMonitor.reportIssue(Issue.createIssue(Component.FAILURE_DETECTOR, CURRENT_NODE_IS_UNRESPONSIVE, "Current node is in unresponsive list"));
         Map<Component, HealthStatus> healthStatusSnapshot = HealthMonitor.getHealthStatusSnapshot();
-        assertThat(healthStatusSnapshot.get(Component.FAILURE_DETECTOR).getLatestRuntimeIssue().get()).isEqualTo(new Issue(Component.FAILURE_DETECTOR, FAILURE_DETECTOR_TASK_FAILED, "Last failure detection task failed"));
+        assertThat(healthStatusSnapshot.get(Component.FAILURE_DETECTOR).getLatestRuntimeIssue().get()).isEqualTo(new Issue(Component.FAILURE_DETECTOR, CURRENT_NODE_IS_UNRESPONSIVE, "Current node is in unresponsive list"));
         HealthMonitor.resolveIssue(Issue.createIssue(Component.FAILURE_DETECTOR, FAILURE_DETECTOR_TASK_FAILED, "Resolved"));
         healthStatusSnapshot = HealthMonitor.getHealthStatusSnapshot();
         assertThat(healthStatusSnapshot.get(Component.FAILURE_DETECTOR).getLatestRuntimeIssue().get()).isEqualTo(new Issue(Component.FAILURE_DETECTOR, CURRENT_NODE_IS_UNRESPONSIVE, "Current node is in unresponsive list"));
         HealthMonitor.resolveIssue(Issue.createIssue(Component.FAILURE_DETECTOR, CURRENT_NODE_IS_UNRESPONSIVE, "Resolved"));
         healthStatusSnapshot = HealthMonitor.getHealthStatusSnapshot();
         assertThat(healthStatusSnapshot.get(Component.FAILURE_DETECTOR).isRuntimeHealthy()).isTrue();
+        HealthMonitor.shutdown();
     }
 
     @Test
@@ -107,11 +111,12 @@ public class HealthMonitorTest {
         HealthMonitor.init();
         HealthReport expectedReport =
                 HealthReport.builder()
-                        .init(new HealthReport.ComponentReportedHealthStatus(ImmutableMap.of()))
-                        .runtime(new HealthReport.ComponentReportedHealthStatus(ImmutableMap.of()))
+                        .init(ImmutableMap.of())
+                        .runtime(ImmutableMap.of())
                         .status(false)
                         .reason("Status is unknown")
                         .build();
+        System.out.println(expectedReport.asJson());
         HealthReport healthReport = HealthMonitor.generateHealthReport();
         // If initialized but init map is empty, the status is unknown
         assertThat(healthReport).isEqualTo(expectedReport);
@@ -122,14 +127,14 @@ public class HealthMonitorTest {
         healthReport = HealthMonitor.generateHealthReport();
         expectedReport =
                 HealthReport.builder()
-                        .init(new HealthReport.ComponentReportedHealthStatus(ImmutableMap.of(
+                        .init(ImmutableMap.of(
                                 Component.FAILURE_DETECTOR, new HealthReport.ReportedHealthStatus(false, "Service is not initialized"),
                                 Component.SEQUENCER, new HealthReport.ReportedHealthStatus(false, "Service is not initialized"),
-                                Component.COMPACTOR, new HealthReport.ReportedHealthStatus(false, "Service is not initialized"))))
-                        .runtime(new HealthReport.ComponentReportedHealthStatus(ImmutableMap.of(
+                                Component.COMPACTOR, new HealthReport.ReportedHealthStatus(false, "Service is not initialized")))
+                        .runtime(ImmutableMap.of(
                                 Component.FAILURE_DETECTOR, new HealthReport.ReportedHealthStatus(false, "Service is not running"),
                                 Component.SEQUENCER, new HealthReport.ReportedHealthStatus(false, "Service is not running"),
-                                Component.COMPACTOR, new HealthReport.ReportedHealthStatus(false, "Service is not running"))))
+                                Component.COMPACTOR, new HealthReport.ReportedHealthStatus(false, "Service is not running")))
                         .reason("Some of the services are not initialized")
                         .status(false)
                         .build();
@@ -140,14 +145,14 @@ public class HealthMonitorTest {
         healthReport = HealthMonitor.generateHealthReport();
         expectedReport =
                 HealthReport.builder()
-                        .init(new HealthReport.ComponentReportedHealthStatus(ImmutableMap.of(
+                        .init(ImmutableMap.of(
                                 Component.FAILURE_DETECTOR, new HealthReport.ReportedHealthStatus(true, "Initialization successful"),
                                 Component.SEQUENCER, new HealthReport.ReportedHealthStatus(false, "Service is not initialized"),
-                                Component.COMPACTOR, new HealthReport.ReportedHealthStatus(true, "Initialization successful"))))
-                        .runtime(new HealthReport.ComponentReportedHealthStatus(ImmutableMap.of(
+                                Component.COMPACTOR, new HealthReport.ReportedHealthStatus(true, "Initialization successful")))
+                        .runtime(ImmutableMap.of(
                                 Component.FAILURE_DETECTOR, new HealthReport.ReportedHealthStatus(true, "Up and running"),
                                 Component.SEQUENCER, new HealthReport.ReportedHealthStatus(false, "Service is not running"),
-                                Component.COMPACTOR, new HealthReport.ReportedHealthStatus(true, "Up and running"))))
+                                Component.COMPACTOR, new HealthReport.ReportedHealthStatus(true, "Up and running")))
                         .reason("Some of the services are not initialized")
                         .status(false)
                         .build();
@@ -157,14 +162,14 @@ public class HealthMonitorTest {
         healthReport = HealthMonitor.generateHealthReport();
         expectedReport =
                 HealthReport.builder()
-                        .init(new HealthReport.ComponentReportedHealthStatus(ImmutableMap.of(
+                        .init(ImmutableMap.of(
                                 Component.FAILURE_DETECTOR, new HealthReport.ReportedHealthStatus(true, "Initialization successful"),
                                 Component.SEQUENCER, new HealthReport.ReportedHealthStatus(true, "Initialization successful"),
-                                Component.COMPACTOR, new HealthReport.ReportedHealthStatus(true, "Initialization successful"))))
-                        .runtime(new HealthReport.ComponentReportedHealthStatus(ImmutableMap.of(
+                                Component.COMPACTOR, new HealthReport.ReportedHealthStatus(true, "Initialization successful")))
+                        .runtime(ImmutableMap.of(
                                 Component.FAILURE_DETECTOR, new HealthReport.ReportedHealthStatus(true, "Up and running"),
                                 Component.SEQUENCER, new HealthReport.ReportedHealthStatus(true, "Up and running"),
-                                Component.COMPACTOR, new HealthReport.ReportedHealthStatus(true, "Up and running"))))
+                                Component.COMPACTOR, new HealthReport.ReportedHealthStatus(true, "Up and running")))
                         .reason("Healthy")
                         .status(true)
                         .build();
@@ -173,16 +178,16 @@ public class HealthMonitorTest {
         HealthMonitor.reportIssue(Issue.createInitIssue(Component.LOG_UNIT));
         expectedReport =
                 HealthReport.builder()
-                        .init(new HealthReport.ComponentReportedHealthStatus(ImmutableMap.of(
+                        .init(ImmutableMap.of(
                                 Component.FAILURE_DETECTOR, new HealthReport.ReportedHealthStatus(true, "Initialization successful"),
                                 Component.SEQUENCER, new HealthReport.ReportedHealthStatus(true, "Initialization successful"),
                                 Component.COMPACTOR, new HealthReport.ReportedHealthStatus(true, "Initialization successful"),
-                                Component.LOG_UNIT, new HealthReport.ReportedHealthStatus(false, "Service is not initialized"))))
-                        .runtime(new HealthReport.ComponentReportedHealthStatus(ImmutableMap.of(
+                                Component.LOG_UNIT, new HealthReport.ReportedHealthStatus(false, "Service is not initialized")))
+                        .runtime(ImmutableMap.of(
                                 Component.FAILURE_DETECTOR, new HealthReport.ReportedHealthStatus(true, "Up and running"),
                                 Component.SEQUENCER, new HealthReport.ReportedHealthStatus(true, "Up and running"),
                                 Component.COMPACTOR, new HealthReport.ReportedHealthStatus(true, "Up and running"),
-                                Component.LOG_UNIT, new HealthReport.ReportedHealthStatus(false, "Service is not running"))))
+                                Component.LOG_UNIT, new HealthReport.ReportedHealthStatus(false, "Service is not running")))
                         .reason("Some of the services are not initialized")
                         .status(false)
                         .build();
@@ -192,16 +197,16 @@ public class HealthMonitorTest {
         HealthMonitor.resolveIssue(Issue.createInitIssue(Component.LOG_UNIT));
         expectedReport =
                 HealthReport.builder()
-                        .init(new HealthReport.ComponentReportedHealthStatus(ImmutableMap.of(
+                        .init(ImmutableMap.of(
                                 Component.FAILURE_DETECTOR, new HealthReport.ReportedHealthStatus(true, "Initialization successful"),
                                 Component.SEQUENCER, new HealthReport.ReportedHealthStatus(true, "Initialization successful"),
                                 Component.COMPACTOR, new HealthReport.ReportedHealthStatus(true, "Initialization successful"),
-                                Component.LOG_UNIT, new HealthReport.ReportedHealthStatus(true, "Initialization successful"))))
-                        .runtime(new HealthReport.ComponentReportedHealthStatus(ImmutableMap.of(
+                                Component.LOG_UNIT, new HealthReport.ReportedHealthStatus(true, "Initialization successful")))
+                        .runtime(ImmutableMap.of(
                                 Component.FAILURE_DETECTOR, new HealthReport.ReportedHealthStatus(true, "Up and running"),
                                 Component.SEQUENCER, new HealthReport.ReportedHealthStatus(true, "Up and running"),
                                 Component.COMPACTOR, new HealthReport.ReportedHealthStatus(true, "Up and running"),
-                                Component.LOG_UNIT, new HealthReport.ReportedHealthStatus(true, "Up and running"))))
+                                Component.LOG_UNIT, new HealthReport.ReportedHealthStatus(true, "Up and running")))
                         .reason("Healthy")
                         .status(true)
                         .build();
@@ -212,16 +217,16 @@ public class HealthMonitorTest {
         healthReport = HealthMonitor.generateHealthReport();
         expectedReport =
                 HealthReport.builder()
-                        .init(new HealthReport.ComponentReportedHealthStatus(ImmutableMap.of(
+                        .init(ImmutableMap.of(
                                 Component.FAILURE_DETECTOR, new HealthReport.ReportedHealthStatus(true, "Initialization successful"),
                                 Component.SEQUENCER, new HealthReport.ReportedHealthStatus(true, "Initialization successful"),
                                 Component.COMPACTOR, new HealthReport.ReportedHealthStatus(true, "Initialization successful"),
-                                Component.LOG_UNIT, new HealthReport.ReportedHealthStatus(true, "Initialization successful"))))
-                        .runtime(new HealthReport.ComponentReportedHealthStatus(ImmutableMap.of(
+                                Component.LOG_UNIT, new HealthReport.ReportedHealthStatus(true, "Initialization successful")))
+                        .runtime(ImmutableMap.of(
                                 Component.FAILURE_DETECTOR, new HealthReport.ReportedHealthStatus(false, "Failure detector task has failed"),
                                 Component.SEQUENCER, new HealthReport.ReportedHealthStatus(true, "Up and running"),
                                 Component.COMPACTOR, new HealthReport.ReportedHealthStatus(true, "Up and running"),
-                                Component.LOG_UNIT, new HealthReport.ReportedHealthStatus(true, "Up and running"))))
+                                Component.LOG_UNIT, new HealthReport.ReportedHealthStatus(true, "Up and running")))
                         .reason("Some of the services experience runtime health issues")
                         .status(false)
                         .build();
@@ -231,16 +236,16 @@ public class HealthMonitorTest {
         healthReport = HealthMonitor.generateHealthReport();
         expectedReport =
                 HealthReport.builder()
-                        .init(new HealthReport.ComponentReportedHealthStatus(ImmutableMap.of(
+                        .init(ImmutableMap.of(
                                 Component.FAILURE_DETECTOR, new HealthReport.ReportedHealthStatus(true, "Initialization successful"),
                                 Component.SEQUENCER, new HealthReport.ReportedHealthStatus(true, "Initialization successful"),
                                 Component.COMPACTOR, new HealthReport.ReportedHealthStatus(true, "Initialization successful"),
-                                Component.LOG_UNIT, new HealthReport.ReportedHealthStatus(true, "Initialization successful"))))
-                        .runtime(new HealthReport.ComponentReportedHealthStatus(ImmutableMap.of(
+                                Component.LOG_UNIT, new HealthReport.ReportedHealthStatus(true, "Initialization successful")))
+                        .runtime(ImmutableMap.of(
                                 Component.FAILURE_DETECTOR, new HealthReport.ReportedHealthStatus(false, "Failure detector task has failed"),
                                 Component.SEQUENCER, new HealthReport.ReportedHealthStatus(true, "Up and running"),
                                 Component.COMPACTOR, new HealthReport.ReportedHealthStatus(false, "Compactor failed"),
-                                Component.LOG_UNIT, new HealthReport.ReportedHealthStatus(true, "Up and running"))))
+                                Component.LOG_UNIT, new HealthReport.ReportedHealthStatus(true, "Up and running")))
                         .reason("Some of the services experience runtime health issues")
                         .status(false)
                         .build();
@@ -250,16 +255,16 @@ public class HealthMonitorTest {
         healthReport = HealthMonitor.generateHealthReport();
         expectedReport =
                 HealthReport.builder()
-                        .init(new HealthReport.ComponentReportedHealthStatus(ImmutableMap.of(
+                        .init(ImmutableMap.of(
                                 Component.FAILURE_DETECTOR, new HealthReport.ReportedHealthStatus(true, "Initialization successful"),
                                 Component.SEQUENCER, new HealthReport.ReportedHealthStatus(true, "Initialization successful"),
                                 Component.COMPACTOR, new HealthReport.ReportedHealthStatus(true, "Initialization successful"),
-                                Component.LOG_UNIT, new HealthReport.ReportedHealthStatus(true, "Initialization successful"))))
-                        .runtime(new HealthReport.ComponentReportedHealthStatus(ImmutableMap.of(
+                                Component.LOG_UNIT, new HealthReport.ReportedHealthStatus(true, "Initialization successful")))
+                        .runtime(ImmutableMap.of(
                                 Component.FAILURE_DETECTOR, new HealthReport.ReportedHealthStatus(false, "Node is in the unresponsive list"),
                                 Component.SEQUENCER, new HealthReport.ReportedHealthStatus(true, "Up and running"),
                                 Component.COMPACTOR, new HealthReport.ReportedHealthStatus(false, "Compactor failed"),
-                                Component.LOG_UNIT, new HealthReport.ReportedHealthStatus(true, "Up and running"))))
+                                Component.LOG_UNIT, new HealthReport.ReportedHealthStatus(true, "Up and running")))
                         .reason("Some of the services experience runtime health issues")
                         .status(false)
                         .build();
@@ -269,16 +274,16 @@ public class HealthMonitorTest {
         healthReport = HealthMonitor.generateHealthReport();
         expectedReport =
                 HealthReport.builder()
-                        .init(new HealthReport.ComponentReportedHealthStatus(ImmutableMap.of(
+                        .init(ImmutableMap.of(
                                 Component.FAILURE_DETECTOR, new HealthReport.ReportedHealthStatus(true, "Initialization successful"),
                                 Component.SEQUENCER, new HealthReport.ReportedHealthStatus(true, "Initialization successful"),
                                 Component.COMPACTOR, new HealthReport.ReportedHealthStatus(true, "Initialization successful"),
-                                Component.LOG_UNIT, new HealthReport.ReportedHealthStatus(true, "Initialization successful"))))
-                        .runtime(new HealthReport.ComponentReportedHealthStatus(ImmutableMap.of(
+                                Component.LOG_UNIT, new HealthReport.ReportedHealthStatus(true, "Initialization successful")))
+                        .runtime(ImmutableMap.of(
                                 Component.FAILURE_DETECTOR, new HealthReport.ReportedHealthStatus(false, "Node is in the unresponsive list"),
                                 Component.SEQUENCER, new HealthReport.ReportedHealthStatus(true, "Up and running"),
                                 Component.COMPACTOR, new HealthReport.ReportedHealthStatus(true, "Up and running"),
-                                Component.LOG_UNIT, new HealthReport.ReportedHealthStatus(true, "Up and running"))))
+                                Component.LOG_UNIT, new HealthReport.ReportedHealthStatus(true, "Up and running")))
                         .reason("Some of the services experience runtime health issues")
                         .status(false)
                         .build();
@@ -288,16 +293,16 @@ public class HealthMonitorTest {
         healthReport = HealthMonitor.generateHealthReport();
         expectedReport =
                 HealthReport.builder()
-                        .init(new HealthReport.ComponentReportedHealthStatus(ImmutableMap.of(
+                        .init(ImmutableMap.of(
                                 Component.FAILURE_DETECTOR, new HealthReport.ReportedHealthStatus(true, "Initialization successful"),
                                 Component.SEQUENCER, new HealthReport.ReportedHealthStatus(true, "Initialization successful"),
                                 Component.COMPACTOR, new HealthReport.ReportedHealthStatus(true, "Initialization successful"),
-                                Component.LOG_UNIT, new HealthReport.ReportedHealthStatus(true, "Initialization successful"))))
-                        .runtime(new HealthReport.ComponentReportedHealthStatus(ImmutableMap.of(
+                                Component.LOG_UNIT, new HealthReport.ReportedHealthStatus(true, "Initialization successful")))
+                        .runtime(ImmutableMap.of(
                                 Component.FAILURE_DETECTOR, new HealthReport.ReportedHealthStatus(false, "Failure detector task has failed"),
                                 Component.SEQUENCER, new HealthReport.ReportedHealthStatus(true, "Up and running"),
                                 Component.COMPACTOR, new HealthReport.ReportedHealthStatus(true, "Up and running"),
-                                Component.LOG_UNIT, new HealthReport.ReportedHealthStatus(true, "Up and running"))))
+                                Component.LOG_UNIT, new HealthReport.ReportedHealthStatus(true, "Up and running")))
                         .reason("Some of the services experience runtime health issues")
                         .status(false)
                         .build();
@@ -307,16 +312,16 @@ public class HealthMonitorTest {
         healthReport = HealthMonitor.generateHealthReport();
         expectedReport =
                 HealthReport.builder()
-                        .init(new HealthReport.ComponentReportedHealthStatus(ImmutableMap.of(
+                        .init(ImmutableMap.of(
                                 Component.FAILURE_DETECTOR, new HealthReport.ReportedHealthStatus(true, "Initialization successful"),
                                 Component.SEQUENCER, new HealthReport.ReportedHealthStatus(true, "Initialization successful"),
                                 Component.COMPACTOR, new HealthReport.ReportedHealthStatus(true, "Initialization successful"),
-                                Component.LOG_UNIT, new HealthReport.ReportedHealthStatus(true, "Initialization successful"))))
-                        .runtime(new HealthReport.ComponentReportedHealthStatus(ImmutableMap.of(
+                                Component.LOG_UNIT, new HealthReport.ReportedHealthStatus(true, "Initialization successful")))
+                        .runtime(ImmutableMap.of(
                                 Component.FAILURE_DETECTOR, new HealthReport.ReportedHealthStatus(true, "Up and running"),
                                 Component.SEQUENCER, new HealthReport.ReportedHealthStatus(true, "Up and running"),
                                 Component.COMPACTOR, new HealthReport.ReportedHealthStatus(true, "Up and running"),
-                                Component.LOG_UNIT, new HealthReport.ReportedHealthStatus(true, "Up and running"))))
+                                Component.LOG_UNIT, new HealthReport.ReportedHealthStatus(true, "Up and running")))
                         .reason("Healthy")
                         .status(true)
                         .build();
@@ -327,31 +332,22 @@ public class HealthMonitorTest {
         healthReport = HealthMonitor.generateHealthReport();
         expectedReport =
                 HealthReport.builder()
-                        .init(new HealthReport.ComponentReportedHealthStatus(ImmutableMap.of(
+                        .init(ImmutableMap.of(
                                 Component.FAILURE_DETECTOR, new HealthReport.ReportedHealthStatus(false, "Service is not initialized"),
                                 Component.SEQUENCER, new HealthReport.ReportedHealthStatus(false, "Service is not initialized"),
                                 Component.COMPACTOR, new HealthReport.ReportedHealthStatus(false, "Service is not initialized"),
-                                Component.LOG_UNIT, new HealthReport.ReportedHealthStatus(false, "Service is not initialized"))))
-                        .runtime(new HealthReport.ComponentReportedHealthStatus(ImmutableMap.of(
+                                Component.LOG_UNIT, new HealthReport.ReportedHealthStatus(false, "Service is not initialized")))
+                        .runtime(ImmutableMap.of(
                                 Component.FAILURE_DETECTOR, new HealthReport.ReportedHealthStatus(false, "Service is not running"),
                                 Component.SEQUENCER, new HealthReport.ReportedHealthStatus(false, "Service is not running"),
                                 Component.COMPACTOR, new HealthReport.ReportedHealthStatus(false, "Service is not running"),
-                                Component.LOG_UNIT, new HealthReport.ReportedHealthStatus(false, "Service is not running"))))
+                                Component.LOG_UNIT, new HealthReport.ReportedHealthStatus(false, "Service is not running")))
                         .reason("Some of the services are not initialized")
                         .status(false)
                         .build();
         assertThat(healthReport).isEqualTo(expectedReport);
         // HealthMonitor is shutdown too
         HealthMonitor.shutdown();
-        healthReport = HealthMonitor.generateHealthReport();
-        expectedReport =
-                HealthReport.builder()
-                        .init(new HealthReport.ComponentReportedHealthStatus(ImmutableMap.of()))
-                        .runtime(new HealthReport.ComponentReportedHealthStatus(ImmutableMap.of()))
-                        .status(false)
-                        .reason("Status is unknown")
-                        .build();
-        assertThat(healthReport).isEqualTo(expectedReport);
     }
 
 

@@ -66,6 +66,7 @@ public class HealthMonitor {
 
     private void close() {
         componentHealthStatus.clear();
+        instance = Optional.empty();
     }
 
     public static void shutdown() {

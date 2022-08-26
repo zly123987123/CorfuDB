@@ -1,6 +1,8 @@
 package org.corfudb.infrastructure.health;
 
 import com.google.common.collect.ImmutableMap;
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.EqualsAndHashCode;
@@ -21,23 +23,22 @@ public class HealthReport {
     @Builder.Default
     private final String reason = "Unknown";
     @NonNull
-    private final ComponentReportedHealthStatus init;
+    private final Map<Component, ReportedHealthStatus> init;
     @NonNull
-    private final ComponentReportedHealthStatus runtime;
+    private final Map<Component, ReportedHealthStatus> runtime;
 
 
     public static HealthReport fromComponentHealthStatus(Map<Component, HealthStatus> componentHealthStatus) {
         Map<Component, HealthStatus> componentHealthStatusSnapshot = ImmutableMap.copyOf(componentHealthStatus);
-        final ComponentReportedHealthStatus initReportedHealthStatus = createInitReportedHealthStatus(componentHealthStatusSnapshot);
-        final ComponentReportedHealthStatus runtimeReportedHealthStatus = createRuntimeReportedHealthStatus(componentHealthStatusSnapshot);
-        boolean overallStatus = initReportedHealthStatus.allHealthy() && runtimeReportedHealthStatus.allHealthy();
+        final Map<Component, ReportedHealthStatus> initReportedHealthStatus = createInitReportedHealthStatus(componentHealthStatusSnapshot);
+        final Map<Component, ReportedHealthStatus> runtimeReportedHealthStatus = createRuntimeReportedHealthStatus(componentHealthStatusSnapshot);
+        boolean overallStatus = isHealthy(initReportedHealthStatus) && isHealthy(runtimeReportedHealthStatus);
         String overallReason;
-        if (!initReportedHealthStatus.hasReport()) {
+        if (initReportedHealthStatus.isEmpty()) {
             overallReason = "Status is unknown";
-        }
-        else if (initReportedHealthStatus.hasReport() && !initReportedHealthStatus.allHealthy()) {
+        } else if (!isHealthy(initReportedHealthStatus)) {
             overallReason = "Some of the services are not initialized";
-        } else if (runtimeReportedHealthStatus.hasReport() && !runtimeReportedHealthStatus.allHealthy()) {
+        } else if (!isHealthy(runtimeReportedHealthStatus)) {
             overallReason = "Some of the services experience runtime health issues";
         } else {
             overallReason = "Healthy";
@@ -50,8 +51,18 @@ public class HealthReport {
                 .build();
     }
 
-    private static ComponentReportedHealthStatus createInitReportedHealthStatus(Map<Component, HealthStatus> componentHealthStatus) {
-        return ComponentReportedHealthStatus.fromMap(componentHealthStatus.entrySet().stream().map(entry -> {
+    public String asJson() {
+        Gson gson = new GsonBuilder().setPrettyPrinting().create();
+        return gson.toJson(this);
+    }
+
+    private static boolean isHealthy(Map<Component, ReportedHealthStatus> componentHealthMap) {
+        return !componentHealthMap.isEmpty() && componentHealthMap.values().stream()
+                .allMatch(healthStatus -> healthStatus.status);
+    }
+
+    private static Map<Component, ReportedHealthStatus> createInitReportedHealthStatus(Map<Component, HealthStatus> componentHealthStatus) {
+        return componentHealthStatus.entrySet().stream().map(entry -> {
             final Component component = entry.getKey();
             final HealthStatus healthStatus = entry.getValue();
             if (healthStatus.isInitHealthy()) {
@@ -59,11 +70,11 @@ public class HealthReport {
             } else {
                 return Tuple.of(component, new ReportedHealthStatus(false, "Service is not initialized"));
             }
-        }).collect(Collectors.toMap(tuple -> tuple.first, tuple -> tuple.second)));
+        }).collect(Collectors.toMap(tuple -> tuple.first, tuple -> tuple.second));
     }
 
-    private static ComponentReportedHealthStatus createRuntimeReportedHealthStatus(Map<Component, HealthStatus> componentHealthStatus) {
-        return ComponentReportedHealthStatus.fromMap(componentHealthStatus.entrySet().stream().map(entry -> {
+    private static Map<Component, ReportedHealthStatus> createRuntimeReportedHealthStatus(Map<Component, HealthStatus> componentHealthStatus) {
+        return componentHealthStatus.entrySet().stream().map(entry -> {
             final Component component = entry.getKey();
             final HealthStatus healthStatus = entry.getValue();
             if (healthStatus.getLatestRuntimeIssue().isPresent()) {
@@ -74,7 +85,7 @@ public class HealthReport {
             } else {
                 return Tuple.of(component, new ReportedHealthStatus(true, "Up and running"));
             }
-        }).collect(Collectors.toMap(tuple -> tuple.first, tuple -> tuple.second)));
+        }).collect(Collectors.toMap(tuple -> tuple.first, tuple -> tuple.second));
     }
 
     @AllArgsConstructor
@@ -84,24 +95,4 @@ public class HealthReport {
         private final boolean status;
         private final String reason;
     }
-
-    @AllArgsConstructor
-    @ToString
-    @EqualsAndHashCode
-    static class ComponentReportedHealthStatus {
-        private final Map<Component, ReportedHealthStatus> report;
-
-        public static ComponentReportedHealthStatus fromMap(Map<Component, ReportedHealthStatus> map) {
-            return new ComponentReportedHealthStatus(map);
-        }
-
-        public boolean allHealthy() {
-            return hasReport() && report.values().stream().allMatch(healthStatus -> healthStatus.status);
-        }
-
-        public boolean hasReport() {
-            return !report.isEmpty();
-        }
-    }
-
 }
