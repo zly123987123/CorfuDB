@@ -181,7 +181,7 @@ public class CorfuStoreBrowserEditor implements CorfuBrowserEditorCommands {
         return size;
     }
 
-    private void printKey(Map.Entry<CorfuDynamicKey, CorfuDynamicRecord> entry) {
+    public static void printKey(Map.Entry<CorfuDynamicKey, CorfuDynamicRecord> entry) {
         StringBuilder builder;
         try {
             builder = new StringBuilder("\nKey:\n")
@@ -192,7 +192,7 @@ public class CorfuStoreBrowserEditor implements CorfuBrowserEditorCommands {
         }
     }
 
-    private void printPayload(Map.Entry<CorfuDynamicKey, CorfuDynamicRecord> entry) {
+    public static void printPayload(Map.Entry<CorfuDynamicKey, CorfuDynamicRecord> entry) {
         StringBuilder builder;
         if (entry.getValue().getPayload() == null) {
             log.error("payload is NULL");
@@ -204,7 +204,7 @@ public class CorfuStoreBrowserEditor implements CorfuBrowserEditorCommands {
                     .append(JsonFormat.printer().print(entry.getValue().getPayload()));
             System.out.println(builder.toString());
         } catch (Exception e) {
-            log.error("invalid payload: ", e);
+            //log.error("invalid payload: ", e);
         }
     }
 
@@ -243,7 +243,7 @@ public class CorfuStoreBrowserEditor implements CorfuBrowserEditorCommands {
         return dynamicProtobufSerializer.getCachedRegistryTable().size();
     }
 
-    private void printMetadata(Map.Entry<CorfuDynamicKey, CorfuDynamicRecord> entry) {
+    public static void printMetadata(Map.Entry<CorfuDynamicKey, CorfuDynamicRecord> entry) {
         StringBuilder builder;
         if (entry.getValue().getMetadata() == null) {
             log.error("metadata is NULL");
