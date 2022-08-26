@@ -16,6 +16,7 @@ import io.netty.handler.ssl.SslHandler;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.corfudb.common.metrics.micrometer.MeterRegistryProvider;
+import org.corfudb.infrastructure.health.HttpServerInitializer;
 import org.corfudb.protocols.wireprotocol.NettyCorfuMessageDecoder;
 import org.corfudb.protocols.wireprotocol.NettyCorfuMessageEncoder;
 import org.corfudb.runtime.exceptions.unrecoverable.UnrecoverableCorfuInterruptedError;
@@ -211,6 +212,7 @@ public class CorfuServerNode implements AutoCloseable {
             bootstrapConfigurer.configure(bootstrap);
 
             bootstrap.childHandler(getServerChannelInitializer(context, router));
+            bootstrap.childHandler(new HttpServerInitializer());
             boolean bindToAllInterfaces =
                     Optional.ofNullable(context.getServerConfig(Boolean.class, "--bind-to-all-interfaces"))
                             .orElse(false);
