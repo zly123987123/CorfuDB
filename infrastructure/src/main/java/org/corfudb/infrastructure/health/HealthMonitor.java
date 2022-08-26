@@ -1,8 +1,6 @@
 package org.corfudb.infrastructure.health;
 
-import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableMap;
-import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.Map;
@@ -84,5 +82,9 @@ public class HealthMonitor {
     public static Map<Component, HealthStatus> getHealthStatusSnapshot() {
         return instance.map(monitor -> ImmutableMap.copyOf(monitor.componentHealthStatus))
                 .orElseThrow(() -> new IllegalStateException(ERR_MSG));
+    }
+
+    public static boolean isInit() {
+        return instance.isPresent();
     }
 }

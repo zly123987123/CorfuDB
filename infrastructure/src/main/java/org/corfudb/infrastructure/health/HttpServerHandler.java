@@ -22,7 +22,7 @@ import static io.netty.handler.codec.http.HttpResponseStatus.BAD_REQUEST;
 import static io.netty.handler.codec.http.HttpResponseStatus.OK;
 
 public class HttpServerHandler extends SimpleChannelInboundHandler<HttpObject> {
-    private static final byte[] CONTENT = {'H', 'e', 'l', 'l', 'o', ' ', 'W', 'o', 'r', 'l', 'd'};
+
 
     @Override
     public void channelReadComplete(ChannelHandlerContext ctx) {
@@ -36,14 +36,25 @@ public class HttpServerHandler extends SimpleChannelInboundHandler<HttpObject> {
             boolean keepAlive = HttpUtil.isKeepAlive(req);
             FullHttpResponse response;
             if (req.uri().equals("/health")) {
-                response = new DefaultFullHttpResponse(req.protocolVersion(), OK,
-                        Unpooled.wrappedBuffer(CONTENT));
+                if (!HealthMonitor.isInit()) {
+                    response = new DefaultFullHttpResponse(req.protocolVersion(), BAD_REQUEST,
+                            Unpooled.copiedBuffer("Health monitor is not initialized", CharsetUtil.UTF_8));
+                    response.headers()
+                            .set(CONTENT_TYPE, TEXT_PLAIN);
+                }
+                else{
+                    response = new DefaultFullHttpResponse(req.protocolVersion(), OK,
+                            Unpooled.copiedBuffer(HealthMonitor.generateHealthReport().asJson(), CharsetUtil.UTF_8));
+                    response.headers()
+                            .set(CONTENT_TYPE, "application/json");
+                }
             } else {
                 response = new DefaultFullHttpResponse(req.protocolVersion(), BAD_REQUEST,
                         Unpooled.copiedBuffer("Bad request", CharsetUtil.UTF_8));
+                response.headers()
+                        .set(CONTENT_TYPE, TEXT_PLAIN);
             }
             response.headers()
-                    .set(CONTENT_TYPE, TEXT_PLAIN)
                     .setInt(CONTENT_LENGTH, response.content().readableBytes());
             if (keepAlive) {
                 if (!req.protocolVersion().isKeepAliveDefault()) {

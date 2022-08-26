@@ -16,6 +16,7 @@ import io.netty.handler.ssl.SslHandler;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.corfudb.common.metrics.micrometer.MeterRegistryProvider;
+import org.corfudb.infrastructure.health.HealthMonitor;
 import org.corfudb.infrastructure.health.HttpServerInitializer;
 import org.corfudb.protocols.wireprotocol.NettyCorfuMessageDecoder;
 import org.corfudb.protocols.wireprotocol.NettyCorfuMessageEncoder;
@@ -58,6 +59,8 @@ public class CorfuServerNode implements AutoCloseable {
 
     private ChannelFuture bindFuture;
 
+    private ChannelFuture httpServerFuture;
+
     /**
      * Corfu Server initialization.
      *
@@ -90,7 +93,7 @@ public class CorfuServerNode implements AutoCloseable {
         this.serverContext.setServerRouter(router);
         // If the node is started in the single node setup and was bootstrapped,
         // set the server epoch as well.
-        if(serverContext.isSingleNodeSetup() && serverContext.getCurrentLayout() != null){
+        if (serverContext.isSingleNodeSetup() && serverContext.getCurrentLayout() != null) {
             serverContext.setServerEpoch(serverContext.getCurrentLayout().getEpoch(),
                     router);
         }
@@ -107,6 +110,7 @@ public class CorfuServerNode implements AutoCloseable {
                 router,
                 (String) serverContext.getServerConfig().get("--address"),
                 Integer.parseInt((String) serverContext.getServerConfig().get("<port>")));
+        httpServerFuture = bindHttpServer(serverContext.getWorkerGroup(), this::configureBootstrapOptions, serverContext);
 
         return bindFuture.syncUninterruptibly();
     }
@@ -134,6 +138,9 @@ public class CorfuServerNode implements AutoCloseable {
         serverContext.close();
         if (bindFuture != null) {
             bindFuture.channel().close().syncUninterruptibly();
+        }
+        if (httpServerFuture != null) {
+            httpServerFuture.channel().close().syncUninterruptibly();
         }
 
         // A executor service to create the shutdown threads
@@ -165,6 +172,7 @@ public class CorfuServerNode implements AutoCloseable {
                 MeterRegistryProvider.close();
             }
         });
+        HealthMonitor.shutdown();
         log.info("close: Server shutdown and resources released");
     }
 
@@ -210,9 +218,11 @@ public class CorfuServerNode implements AutoCloseable {
             bootstrap.group(workerGroup)
                     .channel(context.getChannelImplementation().getServerChannelClass());
             bootstrapConfigurer.configure(bootstrap);
-
             bootstrap.childHandler(getServerChannelInitializer(context, router));
-            bootstrap.childHandler(new HttpServerInitializer());
+
+            // https://stackoverflow.com/questions/27112084/how-to-use-multiple-serverbootstrap-objects-in-netty
+            // https://github.com/netty/netty/tree/4.0/example/src/main/java/io/netty/example/portunification
+
             boolean bindToAllInterfaces =
                     Optional.ofNullable(context.getServerConfig(Boolean.class, "--bind-to-all-interfaces"))
                             .orElse(false);
@@ -226,6 +236,34 @@ public class CorfuServerNode implements AutoCloseable {
         } catch (InterruptedException ie) {
             throw new UnrecoverableCorfuInterruptedError(ie);
         }
+    }
+
+    public ChannelFuture bindHttpServer(@Nonnull EventLoopGroup workerGroup,
+                                        @Nonnull BootstrapConfigurer bootstrapConfigurer,
+                                        @Nonnull ServerContext context) {
+        try {
+            ServerBootstrap bootstrap = new ServerBootstrap();
+            bootstrap.group(workerGroup)
+                    .channel(context.getChannelImplementation().getServerChannelClass());
+            bootstrapConfigurer.configure(bootstrap);
+            bootstrap.childHandler(new HttpServerInitializer());
+            boolean bindToAllInterfaces =
+                    Optional.ofNullable(context.getServerConfig(Boolean.class, "--bind-to-all-interfaces"))
+                            .orElse(false);
+            String address = (String) serverContext.getServerConfig().get("--address");
+            int port = 8080;
+
+            if (bindToAllInterfaces) {
+                log.info("Corfu Http Server listening on all interfaces on port:{}", port);
+                return bootstrap.bind(port).sync();
+            } else {
+                log.info("Corfu Http Server listening on {}:{}", address, port);
+                return bootstrap.bind(address, port).sync();
+            }
+        } catch (InterruptedException ie) {
+            throw new UnrecoverableCorfuInterruptedError(ie);
+        }
+
     }
 
     /**

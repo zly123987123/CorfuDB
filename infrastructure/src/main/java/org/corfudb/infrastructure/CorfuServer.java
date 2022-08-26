@@ -7,6 +7,7 @@ import ch.qos.logback.core.joran.spi.JoranException;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.FileUtils;
 import org.corfudb.common.metrics.micrometer.MeterRegistryProvider;
+import org.corfudb.infrastructure.health.HealthMonitor;
 import org.corfudb.infrastructure.logreplication.infrastructure.CorfuInterClusterReplicationServer;
 import org.corfudb.runtime.exceptions.unrecoverable.UnrecoverableCorfuError;
 import org.corfudb.util.GitRepositoryState;
@@ -292,6 +293,7 @@ public class CorfuServer {
             final ServerContext serverContext = new ServerContext(opts);
             try {
                 configureMetrics(opts, serverContext.getLocalEndpoint());
+                HealthMonitor.init();
                 activeServer = new CorfuServerNode(serverContext);
                 activeServer.startAndListen();
             } catch (Throwable th) {
