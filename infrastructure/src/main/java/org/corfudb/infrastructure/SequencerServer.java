@@ -2,17 +2,18 @@ package org.corfudb.infrastructure;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.google.protobuf.TextFormat;
-import io.micrometer.core.instrument.Meter;
-import io.micrometer.core.instrument.Tags;
 import io.netty.channel.ChannelHandlerContext;
 import lombok.Builder;
 import lombok.Builder.Default;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
-import org.corfudb.common.metrics.micrometer.MeterRegistryProvider;
 import org.corfudb.common.metrics.micrometer.MicroMeterUtils;
 import org.corfudb.infrastructure.SequencerServerCache.ConflictTxStream;
+import org.corfudb.infrastructure.health.Component;
+import org.corfudb.infrastructure.health.HealthMonitor;
+import org.corfudb.infrastructure.health.Issue;
 import org.corfudb.protocols.CorfuProtocolCommon;
 import org.corfudb.protocols.service.CorfuProtocolMessage.ClusterIdCheck;
 import org.corfudb.protocols.service.CorfuProtocolMessage.EpochCheck;
@@ -39,6 +40,7 @@ import org.corfudb.util.Utils;
 
 import javax.annotation.Nonnull;
 import java.lang.invoke.MethodHandles;
+import java.time.Duration;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -46,6 +48,9 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
@@ -149,6 +154,10 @@ public class SequencerServer extends AbstractServer {
 
     private final ExecutorService executor;
 
+    private final ScheduledExecutorService healthReportScheduler;
+
+    private static final Duration HEALTH_REPORT_INTERVAL = Duration.ofSeconds(5);
+
     /**
      * - {@link SequencerServer::globalLogTail}:
      * global log first available position (initially, 0).
@@ -189,6 +198,11 @@ public class SequencerServer extends AbstractServer {
 
         // Sequencer server is single threaded by current design
         executor = serverContext.getExecutorService(1, "sequencer-");
+        healthReportScheduler = Executors.newSingleThreadScheduledExecutor(
+                new ThreadFactoryBuilder()
+                        .setDaemon(true)
+                        .setNameFormat("sequencer-health-" + serverContext.getThreadPrefix())
+                        .build());
 
         globalLogTail = sequencerFactoryHelper.getGlobalLogTail();
         cache = sequencerFactoryHelper.getSequencerServerCache(
@@ -197,6 +211,7 @@ public class SequencerServer extends AbstractServer {
         );
         streamsAddressMap = sequencerFactoryHelper.getStreamAddressSpaceMap();
         streamTailToGlobalTailMap = sequencerFactoryHelper.getStreamTailToGlobalTailMap();
+        HealthMonitor.reportIssue(Issue.createInitIssue(Component.SEQUENCER));
     }
 
     @Override
@@ -204,10 +219,32 @@ public class SequencerServer extends AbstractServer {
         executor.submit(() -> getHandlerMethods().handle(req, ctx, r));
     }
 
+    private void startHealthMonitoring() {
+        Runnable reportSequencerHealth = () -> {
+            if (sequencerEpoch == Layout.INVALID_EPOCH) {
+
+            } else if (sequencerEpoch != serverContext.getServerEpoch()) {
+                //
+            } else {
+
+            }
+        };
+
+        healthReportScheduler.scheduleAtFixedRate(
+                reportSequencerHealth,
+                0,
+                HEALTH_REPORT_INTERVAL.toMillis(),
+                TimeUnit.MILLISECONDS
+        );
+
+    }
+
     @Override
     public void shutdown() {
         super.shutdown();
         executor.shutdown();
+        healthReportScheduler.shutdown();
+        HealthMonitor.reportIssue(Issue.createInitIssue(Component.SEQUENCER));
     }
 
     @Override
@@ -215,13 +252,12 @@ public class SequencerServer extends AbstractServer {
         if (getState() != ServerState.READY) {
             return false;
         }
-
         if ((sequencerEpoch != serverContext.getServerEpoch()) &&
                 (!request.getPayload().getPayloadCase()
                         .equals(PayloadCase.BOOTSTRAP_SEQUENCER_REQUEST))) {
 
             log.warn("isServerReadyToHandleMsg: sequencer epoch:{} != serverEpoch:{}, "
-                    + "{}", sequencerEpoch, serverContext.getServerEpoch(),
+                            + "{}", sequencerEpoch, serverContext.getServerEpoch(),
                     TextFormat.shortDebugString(request.getHeader()));
             return false;
         }
@@ -231,7 +267,7 @@ public class SequencerServer extends AbstractServer {
     /**
      * Checks if an epoch is within a consecutive closed range
      * [{@link this#epochRangeLowerBound}, {@link this#sequencerEpoch}].
-     *
+     * <p>
      * This sequencer serves as the primary sequencer for all the
      * consecutive epochs in this range.
      *
@@ -299,7 +335,7 @@ public class SequencerServer extends AbstractServer {
                 Long keyAddress = cache.get(new ConflictTxStream(conflictStream.getKey(),
                         conflictParam, Address.NON_ADDRESS));
 
-                if (log.isTraceEnabled()){
+                if (log.isTraceEnabled()) {
                     log.trace("Commit-ck[{}] conflict-key[{}](ts={})",
                             txInfo, conflictParam, keyAddress);
                 }
@@ -522,6 +558,8 @@ public class SequencerServer extends AbstractServer {
             }
         }
 
+
+        long lastEpoch = epochRangeLowerBound;
         // Update epochRangeLowerBound if the bootstrap epoch is not consecutive.
         if (epochRangeLowerBound == Layout.INVALID_EPOCH
                 || bootstrapMsgEpoch != sequencerEpoch + 1) {
@@ -533,13 +571,16 @@ public class SequencerServer extends AbstractServer {
         serverContext.setSequencerEpoch(bootstrapMsgEpoch);
 
         log.info("Sequencer reset with token = {}, size {} streamTailToGlobalTailMap = {}," +
-                " sequencerEpoch = {}", globalLogTail, streamTailToGlobalTailMap.size(),
+                        " sequencerEpoch = {}", globalLogTail, streamTailToGlobalTailMap.size(),
                 streamTailToGlobalTailMap, sequencerEpoch);
 
         HeaderMsg responseHeader = getHeaderMsg(req.getHeader(),
                 ClusterIdCheck.CHECK, EpochCheck.IGNORE);
         r.sendResponse(getResponseMsg(responseHeader,
                 getBootstrapSequencerResponseMsg(true)), ctx);
+        if (lastEpoch == Layout.INVALID_EPOCH) {
+            HealthMonitor.resolveIssue(Issue.createInitIssue(Component.SEQUENCER));
+        }
     }
 
     /**
@@ -833,12 +874,12 @@ public class SequencerServer extends AbstractServer {
     /**
      * Used by the unit tests to inject a custom value for the required parameters through the
      * constructor
-     *
+     * <p>
      * The default implementations are listed here which will be overloaded with
      * the custom return values in unit tests.
-     *
+     * <p>
      * Note: This class should always return the default/initial objects and should not have
-     *       any logic as it will never be tested.
+     * any logic as it will never be tested.
      */
     static class SequencerServerInitializer {
         Map<UUID, StreamAddressSpace> getStreamAddressSpaceMap() {

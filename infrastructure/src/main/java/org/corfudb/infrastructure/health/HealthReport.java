@@ -6,6 +6,7 @@ import com.google.gson.GsonBuilder;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.EqualsAndHashCode;
+import lombok.Getter;
 import lombok.NonNull;
 import lombok.ToString;
 import org.corfudb.common.util.Tuple;
@@ -19,12 +20,16 @@ import java.util.stream.Collectors;
 public class HealthReport {
 
     @Builder.Default
+    @Getter
     private final boolean status = false;
     @Builder.Default
+    @Getter
     private final String reason = "Unknown";
     @NonNull
+    @Getter
     private final Map<Component, ReportedHealthStatus> init;
     @NonNull
+    @Getter
     private final Map<Component, ReportedHealthStatus> runtime;
 
 
@@ -92,7 +97,9 @@ public class HealthReport {
     @ToString
     @EqualsAndHashCode
     static class ReportedHealthStatus {
+        @Getter
         private final boolean status;
+        @Getter
         private final String reason;
     }
 }

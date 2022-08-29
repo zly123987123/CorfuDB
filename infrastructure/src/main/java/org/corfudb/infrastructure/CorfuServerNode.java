@@ -104,13 +104,23 @@ public class CorfuServerNode implements AutoCloseable {
      * Start the Corfu Server by listening on the specified port.
      */
     public ChannelFuture start() {
+        final int corfuPort = Integer.parseInt((String) serverContext.getServerConfig().get("<port>"));
         bindFuture = bindServer(serverContext.getWorkerGroup(),
                 this::configureBootstrapOptions,
                 serverContext,
                 router,
                 (String) serverContext.getServerConfig().get("--address"),
-                Integer.parseInt((String) serverContext.getServerConfig().get("<port>")));
-        httpServerFuture = bindHttpServer(serverContext.getWorkerGroup(), this::configureBootstrapOptions, serverContext);
+                corfuPort);
+        if (serverContext.getServerConfig().get("--health-port") != null) {
+            final int healthApiPort = Integer.parseInt((String) serverContext.getServerConfig().get("--health-port"));
+            if (healthApiPort != corfuPort) {
+                httpServerFuture = bindHttpServer(serverContext.getWorkerGroup(), this::configureBootstrapOptions, serverContext,
+                        healthApiPort);
+            }
+            else {
+                log.warn("Port unification is not currently supported. Health server will not be started.");
+            }
+        }
 
         return bindFuture.syncUninterruptibly();
     }
@@ -240,7 +250,7 @@ public class CorfuServerNode implements AutoCloseable {
 
     public ChannelFuture bindHttpServer(@Nonnull EventLoopGroup workerGroup,
                                         @Nonnull BootstrapConfigurer bootstrapConfigurer,
-                                        @Nonnull ServerContext context) {
+                                        @Nonnull ServerContext context, int port) {
         try {
             ServerBootstrap bootstrap = new ServerBootstrap();
             bootstrap.group(workerGroup)
@@ -251,7 +261,6 @@ public class CorfuServerNode implements AutoCloseable {
                     Optional.ofNullable(context.getServerConfig(Boolean.class, "--bind-to-all-interfaces"))
                             .orElse(false);
             String address = (String) serverContext.getServerConfig().get("--address");
-            int port = 8080;
 
             if (bindToAllInterfaces) {
                 log.info("Corfu Http Server listening on all interfaces on port:{}", port);

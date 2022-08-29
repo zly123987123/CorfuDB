@@ -7,6 +7,9 @@ import lombok.NonNull;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.corfudb.common.result.Result;
+import org.corfudb.infrastructure.health.Component;
+import org.corfudb.infrastructure.health.HealthMonitor;
+import org.corfudb.infrastructure.health.Issue;
 import org.corfudb.infrastructure.log.FileSystemAgent;
 import org.corfudb.infrastructure.log.FileSystemAgent.PartitionAgent.PartitionAttribute;
 import org.corfudb.infrastructure.management.ClusterAdvisor;
@@ -215,6 +218,7 @@ public class RemoteMonitoringService implements ManagementService {
                 monitoringInterval.toMillis(),
                 TimeUnit.MILLISECONDS
         );
+        HealthMonitor.resolveIssue(Issue.createInitIssue(Component.FAILURE_DETECTOR));
     }
 
     /**
@@ -461,6 +465,7 @@ public class RemoteMonitoringService implements ManagementService {
         detectionTasksScheduler.shutdownNow();
         failureDetectorWorker.shutdownNow();
         log.info("Fault detection service shutting down.");
+        HealthMonitor.reportIssue(Issue.createInitIssue(Component.FAILURE_DETECTOR));
     }
 
     public enum DetectorTask {

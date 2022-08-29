@@ -6,7 +6,8 @@ public enum Component {
     COMPACTOR("Compactor"),
     ORCHESTRATOR("Clustering Orchestrator"),
     SEQUENCER("Sequencer"),
-    LOG_UNIT("Log Unit");
+    LOG_UNIT("Log Unit"),
+    LAYOUT_SERVER("Layout Server");
 
     private final String fullName;
 
