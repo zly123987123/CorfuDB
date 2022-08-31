@@ -3,7 +3,6 @@ package org.corfudb.infrastructure.logreplication.replication.receive;
 import com.google.protobuf.TextFormat;
 import lombok.extern.slf4j.Slf4j;
 import org.corfudb.infrastructure.logreplication.LogReplicationConfig;
-import org.corfudb.infrastructure.logreplication.proto.LogReplicationClusterInfo.StreamsDiscoveryMode;
 import org.corfudb.protocols.logprotocol.OpaqueEntry;
 import org.corfudb.protocols.logprotocol.SMREntry;
 import org.corfudb.protocols.service.CorfuProtocolLogReplication;
@@ -64,12 +63,10 @@ public class LogEntryWriter extends SinkWriter {
         List<OpaqueEntry> opaqueEntryList = CorfuProtocolLogReplication.extractOpaqueEntries(txMessage);
 
         try (TxnContext txnContext = logReplicationMetadataManager.getTxnContext()) {
-            if (config.getStreamsDiscoveryMode().equals(StreamsDiscoveryMode.DYNAMIC)) {
-                // Sync with registry table when entering this transaction, to make sure the config captures newly
-                // opened tables on Sink side. Note that opening new tables is not allowed within a transaction, so
-                // we can make sure config is up-to-date on Sink side and only need to consider new entries.
-                config.syncWithRegistry();
-            }
+            // Sync with registry table when entering this transaction, to make sure the config captures newly
+            // opened tables on Sink side. Note that opening new tables is not allowed within a transaction, so
+            // we can make sure config is up-to-date on Sink side and only need to consider new entries.
+            config.syncWithRegistry();
 
             Map<LogReplicationMetadataType, Long> metadataMap = logReplicationMetadataManager.queryMetadata(
                     txnContext, LogReplicationMetadataType.TOPOLOGY_CONFIG_ID, LogReplicationMetadataType.LAST_SNAPSHOT_STARTED,
@@ -115,7 +112,7 @@ public class LogEntryWriter extends SinkWriter {
                             // If stream tags exist for the current stream, it means its intended for streaming on the Sink (receiver)
                             txnContext.logUpdate(streamId, smrEntry, config.getDataStreamToTagsMap().get(streamId));
                         }
-                        if (!newEntries.isEmpty() && config.getStreamsDiscoveryMode().equals(StreamsDiscoveryMode.DYNAMIC)) {
+                        if (!newEntries.isEmpty()) {
                             // In DYNAMIC mode, if there are new entries for registry table, update the config after
                             // applying these new entries
                             log.info("{} new entries for registry table found during log entry sync.", newEntries.size());
@@ -187,9 +184,6 @@ public class LogEntryWriter extends SinkWriter {
     public void reset(long snapshot, long ackTimestamp) {
         srcGlobalSnapshot = snapshot;
         lastMsgTs = ackTimestamp;
-        if (config.getStreamsDiscoveryMode().equals(StreamsDiscoveryMode.DYNAMIC)) {
-            // If LR is in DYNAMIC mode, sync with registry table to avoid data loss
-            config.syncWithRegistry();
-        }
+        config.syncWithRegistry();
     }
 }

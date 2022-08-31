@@ -5,7 +5,6 @@ import io.netty.buffer.Unpooled;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.corfudb.infrastructure.logreplication.LogReplicationConfig;
-import org.corfudb.infrastructure.logreplication.proto.LogReplicationClusterInfo.StreamsDiscoveryMode;
 import org.corfudb.infrastructure.logreplication.replication.receive.LogReplicationMetadataManager.LogReplicationMetadataType;
 import org.corfudb.protocols.CorfuProtocolCommon;
 import org.corfudb.protocols.logprotocol.OpaqueEntry;
@@ -133,10 +132,8 @@ public class StreamsSnapshotWriter extends SinkWriter implements SnapshotWriter 
         phase = Phase.TRANSFER_PHASE;
         snapshotSyncStartMarker = Optional.empty();
         replicatedStreamIds.clear();
-        if (config.getStreamsDiscoveryMode().equals(StreamsDiscoveryMode.DYNAMIC)) {
-            // If LR is in DYNAMIC mode, signal the config to sync with registry table to avoid data loss
-            config.syncWithRegistry();
-        }
+        // Signal the config to sync with registry table to avoid data loss
+        config.syncWithRegistry();
     }
 
     /**
@@ -374,10 +371,8 @@ public class StreamsSnapshotWriter extends SinkWriter implements SnapshotWriter 
         // Apply registry table first for streaming consideration in DYNAMIC mode.
         if (config.getStreamMap().containsKey(REGISTRY_TABLE_ID)) {
             applyShadowStream(REGISTRY_TABLE_ID, snapshot);
-            if (config.getStreamsDiscoveryMode().equals(StreamsDiscoveryMode.DYNAMIC)) {
-                // If LR is in DYNAMIC mode, signal the config to sync with registry table after applying its entries
-                config.syncWithRegistry();
-            }
+            // Signal the config to sync with registry table after applying its entries
+            config.syncWithRegistry();
         } else {
             // The only case this should happen is in some tests. Some error could occur if
             // this clause is hit in real deployment.

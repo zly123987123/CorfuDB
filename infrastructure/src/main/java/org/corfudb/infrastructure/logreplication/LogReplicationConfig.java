@@ -5,7 +5,6 @@ import lombok.Data;
 import lombok.ToString;
 import lombok.extern.slf4j.Slf4j;
 import org.corfudb.infrastructure.logreplication.infrastructure.CorfuReplicationDiscoveryService;
-import org.corfudb.infrastructure.logreplication.proto.LogReplicationClusterInfo.StreamsDiscoveryMode;
 import org.corfudb.infrastructure.logreplication.utils.LogReplicationConfigManager;
 import org.corfudb.runtime.CorfuRuntime;
 import org.corfudb.runtime.view.TableRegistry;
@@ -61,10 +60,6 @@ public class LogReplicationConfig {
             REGISTRY_TABLE_ID,
             PROTOBUF_TABLE_ID
     ));
-
-    // Indicate how streamsToReplicate and dataStreamToTagsMap are generated. In STATIC mode they are read from
-    // external adapter, while in DYNAMIC mode they are built by querying registry table. It is STATIC by default.
-    private StreamsDiscoveryMode streamsDiscoveryMode = StreamsDiscoveryMode.STATIC;
 
     // LogReplicationConfigManager contains a suite of utility methods for updating LogReplicationConfig
     private LogReplicationConfigManager configManager;
@@ -123,7 +118,6 @@ public class LogReplicationConfig {
     public LogReplicationConfig(LogReplicationConfigManager configManager,
                                 int maxNumMsgPerBatch, int maxMsgSize, int cacheSize) {
         this(configManager.getStreamsToReplicate(), maxNumMsgPerBatch, maxMsgSize, cacheSize);
-        this.streamsDiscoveryMode = configManager.getStreamsDiscoveryMode();
         this.dataStreamToTagsMap = configManager.getStreamingConfigOnSink();
         this.confirmedNoisyStreams = configManager.getConfirmedNoisyStreams();
         this.configManager = configManager;
@@ -151,10 +145,6 @@ public class LogReplicationConfig {
      * DYNAMIC mode LogReplicationConfig needs to sync with registry table to avoid data loss.
      */
     public void syncWithRegistry() {
-        if (streamsDiscoveryMode.equals(StreamsDiscoveryMode.STATIC)) {
-            log.warn("No need to sync with registry table in STATIC mode! Please use external adapter instead!");
-            return;
-        }
         this.streamsToReplicate = configManager.getStreamsToReplicate();
         this.dataStreamToTagsMap = configManager.getStreamingConfigOnSink();
         this.confirmedNoisyStreams = configManager.getConfirmedNoisyStreams();

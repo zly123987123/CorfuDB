@@ -9,7 +9,6 @@ import org.corfudb.common.metrics.micrometer.MeterRegistryProvider;
 import org.corfudb.common.util.Memory;
 import org.corfudb.common.util.ObservableValue;
 import org.corfudb.infrastructure.logreplication.LogReplicationConfig;
-import org.corfudb.infrastructure.logreplication.proto.LogReplicationClusterInfo.StreamsDiscoveryMode;
 import org.corfudb.infrastructure.logreplication.replication.send.IllegalSnapshotEntrySizeException;
 import org.corfudb.protocols.logprotocol.OpaqueEntry;
 import org.corfudb.protocols.logprotocol.SMREntry;
@@ -267,10 +266,8 @@ public class StreamsSnapshotReader implements SnapshotReader {
 
     @Override
     public void reset(long ts) {
-        if (config.getStreamsDiscoveryMode().equals(StreamsDiscoveryMode.DYNAMIC)) {
-            config.syncWithRegistry();
-            streams = config.getStreamsToReplicate();
-        }
+        config.syncWithRegistry();
+        streams = config.getStreamsToReplicate();
         streamsToSend = new PriorityQueue<>(streams);
         preMsgTs = Address.NON_ADDRESS;
         currentMsgTs = Address.NON_ADDRESS;

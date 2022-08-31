@@ -9,7 +9,6 @@ import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
 import org.corfudb.common.metrics.micrometer.MeterRegistryProvider;
 import org.corfudb.infrastructure.logreplication.LogReplicationConfig;
-import org.corfudb.infrastructure.logreplication.proto.LogReplicationClusterInfo.StreamsDiscoveryMode;
 import org.corfudb.protocols.logprotocol.OpaqueEntry;
 import org.corfudb.protocols.logprotocol.SMREntry;
 import org.corfudb.runtime.CorfuRuntime;
@@ -161,8 +160,7 @@ public class StreamsLogEntryReader implements LogEntryReader {
         // In DYNAMIC mode, chances are that tables corresponding to some streams to replicate were not opened
         // when LogReplicationConfig was initialized. So these streams will be missing from the list of streams to
         // replicate. Check the registry table and add them to the list in that case.
-        if (config.getStreamsDiscoveryMode().equals(StreamsDiscoveryMode.DYNAMIC) &&
-                !streamUUIDs.containsAll(txEntryStreamIds)) {
+        if (!streamUUIDs.containsAll(txEntryStreamIds)) {
             config.syncWithRegistry();
             refreshStreamUUIDs();
         }

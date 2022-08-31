@@ -1,7 +1,5 @@
 package org.corfudb.infrastructure.logreplication.infrastructure.plugins;
 
-import org.corfudb.infrastructure.logreplication.proto.LogReplicationClusterInfo.StreamsDiscoveryMode;
-
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -11,11 +9,6 @@ import java.util.UUID;
  * A default adapter for LR to test stream discovery in DYNAMIC mode.
  */
 public class DefaultAdapterForDynamicStreams implements ILogReplicationConfigAdapter {
-
-    @Override
-    public StreamsDiscoveryMode getStreamsDiscoveryMode() {
-        return StreamsDiscoveryMode.DYNAMIC;
-    }
 
     /**
      * Returns a set of fully qualified stream names to replicate

@@ -4,7 +4,6 @@ import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import lombok.extern.slf4j.Slf4j;
 import org.corfudb.infrastructure.logreplication.LogReplicationConfig;
-import org.corfudb.infrastructure.logreplication.proto.LogReplicationClusterInfo.StreamsDiscoveryMode;
 import org.corfudb.protocols.logprotocol.SMREntry;
 import org.corfudb.runtime.CorfuRuntime;
 import org.corfudb.runtime.CorfuStoreMetadata.TableDescriptors;
@@ -42,10 +41,8 @@ public abstract class SinkWriter {
         // registry table in log entry writer's transaction
         this.registryTable = rt.getTableRegistry().getRegistryTable();
         this.config = config;
-        if (config.getStreamsDiscoveryMode().equals(StreamsDiscoveryMode.DYNAMIC)) {
-            // In DYNAMIC mode signal the config to sync with registry table during initialization
-            config.syncWithRegistry();
-        }
+        // Signal the config to sync with registry table during initialization
+        config.syncWithRegistry();
     }
 
     /**
@@ -53,7 +50,6 @@ public abstract class SinkWriter {
      * to be deserialized in advance to avoid overwriting records that already existed in Sink's registry table.
      * In addition, as the registry table must be read subsequently, new entries need to add their serialization
      * info before applying, which is lost if the OpaqueEntry is written directly.
-     *
      *
      * @param smrEntries List of SMREntry for registry table
      * @return This method will filter out the entries already exist in Sink side registry table, and return a list
@@ -90,7 +86,6 @@ public abstract class SinkWriter {
     }
 
     boolean ignoreEntriesForStream(UUID streamId) {
-        return (config.getStreamsDiscoveryMode().equals(StreamsDiscoveryMode.STATIC) && !config.getStreamMap().containsKey(streamId))
-        || (config.getStreamsDiscoveryMode().equals(StreamsDiscoveryMode.DYNAMIC) && config.getConfirmedNoisyStreams().contains(streamId));
+        return config.getConfirmedNoisyStreams().contains(streamId);
     }
 }

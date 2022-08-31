@@ -5,7 +5,6 @@ import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.corfudb.infrastructure.logreplication.infrastructure.plugins.ILogReplicationConfigAdapter;
 import org.corfudb.infrastructure.logreplication.infrastructure.plugins.LogReplicationPluginConfig;
-import org.corfudb.infrastructure.logreplication.proto.LogReplicationClusterInfo.StreamsDiscoveryMode;
 import org.corfudb.runtime.CorfuRuntime;
 import org.corfudb.runtime.CorfuStoreMetadata.TableDescriptors;
 import org.corfudb.runtime.CorfuStoreMetadata.TableMetadata;
@@ -97,11 +96,6 @@ public class LogReplicationConfigManager {
         setupVersionTable();
     }
 
-    public StreamsDiscoveryMode getStreamsDiscoveryMode() {
-        return logReplicationConfigAdapter.getStreamsDiscoveryMode();
-    }
-
-
     private void initStreamNameFetcherPlugin() {
         log.info("Plugin :: {}", pluginConfigFilePath);
         LogReplicationPluginConfig config = new LogReplicationPluginConfig(pluginConfigFilePath);
@@ -126,12 +120,7 @@ public class LogReplicationConfigManager {
      * @return Set of fully qualified names of streams to replicate
      */
     public Set<String> getStreamsToReplicate() {
-        Set<String> streams;
-        if (getStreamsDiscoveryMode().equals(StreamsDiscoveryMode.STATIC)) {
-            streams = logReplicationConfigAdapter.fetchStreamsToReplicate();
-        } else {
-            streams = readStreamsToReplicateFromRegistry();
-        }
+        Set<String> streams = readStreamsToReplicateFromRegistry();
         // Add registryTable to the streams
         String registryTable = getFullyQualifiedTableName(
                 CORFU_SYSTEM_NAMESPACE, TableRegistry.REGISTRY_TABLE_NAME);
@@ -176,14 +165,7 @@ public class LogReplicationConfigManager {
      * @return map of stream tag UUID to data streams UUIDs.
      */
     public Map<UUID, List<UUID>> getStreamingConfigOnSink() {
-        Map<UUID, List<UUID>> streamingConfig;
-        if (getStreamsDiscoveryMode().equals(StreamsDiscoveryMode.STATIC)) {
-            // In STATIC mode, stream tags map is fetched from external adapter
-            streamingConfig = logReplicationConfigAdapter.getStreamingConfigOnSink();
-        } else {
-            // In DYNAMIC mode, stream tags map is built by querying registry table
-            streamingConfig = readStreamingConfigFromRegistry();
-        }
+        Map<UUID, List<UUID>> streamingConfig = readStreamingConfigFromRegistry();
 
         // Add stream tags for merge only streams
         for (UUID id : MERGE_ONLY_STREAMS) {
