@@ -258,6 +258,7 @@ public class CorfuServer {
 
     public static void configureHealthMonitor(Map<String, Object> opts) {
         if (opts.get("--health-port") != null) {
+            log.info("Starting health monitor");
             HealthMonitor.init();
         }
     }

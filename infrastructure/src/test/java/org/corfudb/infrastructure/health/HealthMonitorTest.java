@@ -2,6 +2,7 @@ package org.corfudb.infrastructure.health;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.gson.Gson;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
@@ -116,7 +117,7 @@ public class HealthMonitorTest {
                         .status(false)
                         .reason("Status is unknown")
                         .build();
-        System.out.println(expectedReport.asJson());
+
         HealthReport healthReport = HealthMonitor.generateHealthReport();
         // If initialized but init map is empty, the status is unknown
         assertThat(healthReport).isEqualTo(expectedReport);

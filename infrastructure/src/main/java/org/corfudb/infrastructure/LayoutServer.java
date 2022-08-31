@@ -104,11 +104,11 @@ public class LayoutServer extends AbstractServer {
 
         // Set the executor to be single-threaded since all the handlers need to be synchronized
         this.executor = serverContext.getExecutorService(1, "layoutServer-");
-        if (getCurrentLayout() == null) {
-            HealthMonitor.reportIssue(Issue.createInitIssue(Component.LAYOUT_SERVER));
-        }
+        HealthMonitor.reportIssue(Issue.createInitIssue(Component.LAYOUT_SERVER));
         if (serverContext.installSingleNodeLayoutIfAbsent()) {
             setLayoutInHistory(getCurrentLayout());
+        }
+        if (getCurrentLayout() != null) {
             HealthMonitor.resolveIssue(Issue.createInitIssue(Component.LAYOUT_SERVER));
         }
     }
